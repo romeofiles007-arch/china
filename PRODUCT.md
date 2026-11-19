@@ -29,4 +29,4 @@
 
 ## ไอคอนแอป
 
-ไอคอนศาลาจีน–ม้วนตำรา–พู่กัน โทนแดงชาด ทอง ดำหมึก มุมมนโปร่งใส (ตัดขอบ) มีครบทุกขนาดใน `extension/icons/` และ `extension/icons/china-auto.ico` สำหรับ setup/ทางลัด — สร้างใหม่ได้ด้วย `scripts/build-icons.ps1` (เรียก `scripts/build-icons.py` ซึ่งอ่านภาพต้นฉบับจาก `assets/china-raw/`)
+ไอคอนธงศึก–กลองศึก–ภูเขาและเมฆจีน โทนแดงชาด ทอง ดำหมึก มุมมนโปร่งใส (ตัดขอบ รัศมี 21%) ใช้ภาพเดียวกันทุกที่: ไอคอนส่วนขยายทุกขนาด ไอคอนหมวด ไอคอนแบรนด์ในแผงข้าง การแจ้งเตือน `china-auto.ico` ของ setup.exe และทางลัดบนเดสก์ท็อป — สร้างใหม่ได้ด้วย `python scripts/build-icons.py --icons` (ไม่ใส่ `--icons` = สร้างภาพตัวละครกับ GIF ใหม่ด้วย ซึ่งต้องรัน `scripts/build-sprite-registration.py` ต่อ) ภาพต้นฉบับอยู่ที่ `assets/china-raw/app-icon.png` · ไอคอนศาลา–ม้วนตำราแบบเดิมเก็บไว้ที่ `app-icon-pavilion.png`
