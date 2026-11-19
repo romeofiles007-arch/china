@@ -122,7 +122,11 @@ export function shareGenre(share = {}, made = {}, rand = Math.random) {
   const n = ids.reduce((a, id) => a + (made[id] ?? 0), 0) + 1
   const gap = (id) => (share[id] / total) * n - (made[id] ?? 0)
   const best = Math.max(...ids.map(gap))
-  const tied = ids.filter((id) => gap(id) >= best - 1e-9)
+  // ต่างกันไม่ถึงครึ่งคลิป = ถือว่าเสมอแล้วสุ่ม ไม่ใช่ชี้ตัวเดียว
+  // ตอนเริ่มชุด made ยังว่าง gap จึงเท่ากับสัดส่วนตรง ๆ (34/33/33) หมวดที่ตั้ง % สูงสุด
+  // จะชนะแบบตายตัวทุกครั้ง → คลิปแรกของทุกชุดเป็นสามก๊กเสมอ (ผู้ใช้เจอ 3 รอบติด 19 พ.ย. 2026)
+  // พอห่างกันเกินครึ่งคลิปเมื่อไหร่ โควตายังบังคับตามสัดส่วนเหมือนเดิม
+  const tied = ids.filter((id) => gap(id) >= best - 0.5)
   const id = tied[Math.floor(rand() * tied.length)]
   return CATEGORIES.find((c) => c.id === id).name
 }
@@ -349,9 +353,11 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
       say('เปิดแอนิเมชัน Kie แต่ยังไม่มี API key — ลองใหม่อีก 10 นาที')
       return save()
     }
-    // หมวดที่ทำสำเร็จแล้วในชุดนี้ → คลิปถัดไปเลือกหมวดให้ตรงสัดส่วน % ที่ตั้งไว้
+    // หมวดที่ "ลงมือทำไปแล้ว" ในชุดนี้ → คลิปถัดไปเลือกหมวดให้ตรงสัดส่วน % ที่ตั้งไว้
+    // นับคลิปที่ล้มด้วย (ไม่เช็ก h.ok แล้ว): เดิมนับเฉพาะที่สำเร็จ พอหมวดไหนล้ม คิวก็ไม่ขยับ
+    // ระบบจึงเลือกหมวดเดิมซ้ำไม่รู้จบ — 19 พ.ย. 2026 ล้ม 1 รอบ แล้วได้สามก๊กซ้ำทั้ง 3 รอบ
     const made = {}
-    for (const h of state.history) if (h.batch === state.batch && h.ok && h.genre) made[h.genre] = (made[h.genre] ?? 0) + 1
+    for (const h of state.history) if (h.batch === state.batch && h.genre) made[h.genre] = (made[h.genre] ?? 0) + 1
     const clip = pickClip(settings, config, Math.random, made)
     // ทำต่อคลิปที่ค้าง: สั่งด้วยชื่อเรื่องเดิม autopilot ข้ามแผนกที่เสร็จแล้วเอง (หมวด/ลายเส้นอยู่ในโปรไฟล์ของคลิปแล้ว)
     const again = state.resume

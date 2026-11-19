@@ -22,7 +22,7 @@ import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
 import { bgmFor, bgmMode, bgmDb } from './lib/bgm.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
 import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver } from './lib/prompts.mjs'
-import { saveScript, loadScript } from './lib/stage2.mjs'
+import { saveScript, loadScript, scriptProblem } from './lib/stage2.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from './lib/shotlist.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { characterAttachments, activeCharacter } from './lib/character.mjs'
@@ -313,9 +313,13 @@ async function scriptDepartment() {
   const existing = loadScript(config, title)
   // บทเดิมยาวผิดเป้าหลายเท่า (เช่นค้างจากรอบที่ ChatGPT เขียนเกิน) → เขียนใหม่ ไม่ใช้ต่อ
   const existingRatio = existing ? existing.minutes / existing.target : 1
-  if (existing && existingRatio <= 2 && existingRatio >= 0.5) return dept('script', { status: 'done', detail: `ใช้บทเดิม (~${existing.minutes.toFixed(1)} นาที)` })
+  // ด่านเนื้อหาต้องตรวจทางนี้ด้วย ไม่ใช่เฉพาะตอนเขียนใหม่ — รอบที่ ChatGPT ถามกลับจะเซฟคำถาม
+  // ลงเป็นไฟล์บทไว้แล้ว รอบถัดมาเห็นว่า "ความยาวพอดี" ก็หยิบคำถามนั้นมาใช้ต่อทันที
+  if (existing && !existing.problem && existingRatio <= 2 && existingRatio >= 0.5) {
+    return dept('script', { status: 'done', detail: `ใช้บทเดิม (~${existing.minutes.toFixed(1)} นาที)` })
+  }
   if (existing) {
-    console.warn(`   บทเดิมยาว ${existing.minutes.toFixed(1)} นาที ห่างจากเป้า ${existing.target} นาทีหลายเท่า — เขียนใหม่`)
+    console.warn(existing.problem ? `   บทเดิมใช้ไม่ได้: ${existing.problem} — เขียนใหม่` : `   บทเดิมยาว ${existing.minutes.toFixed(1)} นาที ห่างจากเป้า ${existing.target} นาทีหลายเท่า — เขียนใหม่`)
     setAsideScript(existing.file)
   }
   let feedback = ''
@@ -338,7 +342,22 @@ async function scriptDepartment() {
       feedback = '\n\n⚠️ บทรอบก่อนขึ้นต้นด้วยคำถาม "คุณเคย…ไหม" ซึ่งห้ามใช้ — เขียนบทใหม่ทั้งหมด บรรทัดแรกเข้าเรื่องทันทีด้วยเหตุการณ์หรือภาพที่กำลังเกิดขึ้น และห้ามใช้รูปประโยค "คุณเคย…ไหม/เคยไหม" ตลอดทั้งบท'
       continue
     }
+    // ChatGPT ถามกลับแทนที่จะเขียนบท เช่น "ต้องการให้ใช้บุคคลใดเป็นตัวเอกครับ?" → ขอใหม่
+    // ห้ามยอมรับแม้รอบสุดท้าย ไม่งั้นคำถามจะถูกพากย์ ทำซับ ทำภาพ แล้วเรนเดอร์ออกมาเป็นคลิป
+    const askedBack = scriptProblem(text)
+    if (askedBack) {
+      console.warn(`   ${askedBack} — ขอเขียนใหม่`)
+      if (attempt === 3) throw new Error(`ChatGPT ถามกลับแทนที่จะเขียนบทครบ 3 รอบ (${askedBack}) — เปลี่ยนหัวข้อ หรือกดทำคลิปอัตโนมัติอีกครั้ง`)
+      feedback =
+        '\n\n⚠️ รอบก่อนคุณถามกลับแทนที่จะเขียนบท — ห้ามถามกลับ ให้เลือกบุคคล/เหตุการณ์ที่เหมาะที่สุดเองแล้วเขียนบทให้ครบทันที ถ้าข้อมูลบางส่วนไม่ชัดเจน ให้เล่าเฉพาะส่วนที่ยืนยันได้ และห้ามทิ้งคำถามถึงผู้ใช้ไว้ในบท'
+      continue
+    }
     const saved = saveScript(config, title, text)
+    // ด่านสุดท้าย: ความยาวพอดีแต่เนื้อหาไม่ใช่บท ก็ห้ามผ่าน
+    if (saved.problem) {
+      setAsideScript(saved.file)
+      throw new Error(`บทที่ได้ใช้ไม่ได้: ${saved.problem} — ลองเปลี่ยนหัวข้อ หรือกดทำคลิปอัตโนมัติอีกครั้ง`)
+    }
     const ratio = saved.minutes / saved.target
     // บทสั้น/ยาวผิดเป้าเล็กน้อย รอบสุดท้ายยอมรับ · ผิดเป้าหลายเท่า (เช่น เป้า 1 นาทีได้ 13 นาที) ห้ามไปต่อ — เสียเวลาทำเสียงและภาพเป็นร้อยช็อต
     if (!saved.offTarget || (attempt === 3 && ratio <= 2 && ratio >= 0.5)) {

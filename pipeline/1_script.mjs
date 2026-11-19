@@ -102,9 +102,15 @@ if (command === 'topics') {
   console.log(`narration: ${LANG_NAME[config.script.language]} · ${config.script.targetMinutes} นาที`)
   const profile = await ensureProfile(slugify(title), { title, genre: config.script.genre })
   const raw = await ask(scriptPrompt(config, title, profile), 'STAGE 2')
-  const { slug, file, minutes, target, offTarget } = saveScript(config, title, raw)
+  const { slug, file, minutes, target, offTarget, problem } = saveScript(config, title, raw)
   console.log(`\n${file}`)
   console.log(`ประมาณ ${minutes.toFixed(1)} นาที (เป้า ${target})`)
+  // เนื้อหาไม่ใช่บท (เช่น ChatGPT ถามกลับ) ต้องหยุดตรงนี้ ไม่ให้ขั้นต่อไปเอาไปพากย์
+  if (problem) {
+    console.error(`\nบทนี้ใช้ไม่ได้: ${problem}`)
+    console.error('เก็บไฟล์ไว้ให้ดูแล้ว — สั่ง script อีกครั้ง หรือแก้ไฟล์เองก่อนไปขั้นที่ 2')
+    process.exit(1)
+  }
   if (offTarget) console.warn('เตือน: ห่างจากเป้าเกิน 25% — สั่งใหม่หรือแก้ไฟล์เองก่อนไปขั้นที่ 2')
   console.log(`ขั้นต่อไป: node pipeline/2_tts.mjs ${slug}`)
 } else {
