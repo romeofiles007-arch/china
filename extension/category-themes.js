@@ -9,7 +9,7 @@ const palette = (mode, values) => ({...semantic[mode], ...values})
 
 export const CATEGORY_THEMES = {
   sanguo: {
-    title:'สามก๊กและวีรบุรุษจีน', day:'agents/china-day.png', night:'agents/china-night.png', icon:'icons/category-sanguo.png',
+    title:'วรรณกรรมจีนและวีรบุรุษ', day:'agents/china-day.png', night:'agents/china-night.png', icon:'icons/category-sanguo.png',
     light:palette('light',{bg:'#2a1a1e',panel:'#36242a',ink:'#fbe9e9',muted:'#d6b0b3',accent:'#ff9f93',line:'#9c7276',pick:'#452b31',wood:'#1b1013',gold:'#eec372',action:'#eec372','action-ink':'#1d1700'}),
     dark:palette('dark',{bg:'#1d1113',panel:'#2b191c',ink:'#fbe9e9',muted:'#d2aaad',accent:'#ff9f93',line:'#9c7276',pick:'#3b2428',wood:'#160c0e',gold:'#eec372',action:'#eec372','action-ink':'#1d1700'}),
   },
