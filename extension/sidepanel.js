@@ -7,6 +7,7 @@
  * prompt ใช้ชุดเดียวกับ pipeline/ (extension/prompts.js) ผลจึงเหมือนรันจาก terminal
  */
 import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, CATEGORIES, categoryOf, resolveMood } from './prompts.js'
+import { screenTopics, localDuplicate } from './dedupe.js'
 import { initIcons, setIconLabel } from './icons.js'
 import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from './agents.js'
 import { initPosting } from './posting.js'
@@ -1262,12 +1263,31 @@ async function runAuto(app, slug) {
   }
 }
 
-$('startAuto').addEventListener('click', () => {
+/** เรื่องที่ทำไปแล้วซึ่งชื่อ (หรือแก่นเรื่อง) เหมือน/เกือบเหมือนหัวข้อนี้ — ไม่มี หรือถามโปรแกรมในเครื่องไม่ได้ = null */
+async function doneDuplicate(title) {
+  const app = await localApp().catch(() => null)
+  if (!app) return null
+  const history = await api(app, '/api/topics/history').catch(() => null)
+  return localDuplicate(title, history?.recent ?? [])
+}
+
+let dupConfirmed = null // หัวข้อที่ผู้ใช้กดยืนยันแล้วว่าจะทำทั้งที่ซ้ำ
+
+$('startAuto').addEventListener('click', async () => {
   const autoTopic = S.autoTopicMode === 'auto'
   const title = autoTopic ? '' : $('autoTitle').value.trim()
   if (!title && !autoTopic) {
     setStatus('autoStatus', S.autoTopicMode === 'suggest' ? 'เลือกหัวข้อจากรายการที่ AI เสนอก่อน' : 'พิมพ์หัวข้อคลิปก่อน', 'error')
     return S.autoTopicMode === 'suggest' ? $('suggestTopics').focus() : $('autoTitle').focus()
+  }
+  // หัวข้อที่พิมพ์เอง (หรือแก้ข้อความที่ AI เสนอ) ยังไม่ผ่านตัวกันเรื่องซ้ำ → เตือนก่อนหนึ่งครั้ง กดอีกครั้ง = ทำจริง
+  const screened = !!S.scoredTopics?.some((t) => t.title === title)
+  if (title && !screened && dupConfirmed !== title && !autoResume) {
+    const hit = await doneDuplicate(title)
+    if (hit) {
+      dupConfirmed = title
+      return setStatus('autoStatus', `เรื่องนี้ทำไปแล้ว — ซ้ำกับ "${hit.title}" · กด ▶ อีกครั้งถ้าจะทำซ้ำจริง`, 'error')
+    }
   }
   startAutopilot({ title, autoTopic })
 })
@@ -1298,7 +1318,9 @@ async function startAutopilot({ title, autoTopic }) {
     const app = await localApp()
     // หัวข้อที่เลือกจากรายการที่เสนอ → ส่งแนวเนื้อหาที่ใช้ตอนเสนอไปด้วย บทจะได้แนวเดียวกัน · พิมพ์เอง/ให้ระบบคิด = ตามตั้งค่าคลิป
     const mood = !autoTopic && S.mood && S.scoredTopics?.some((t) => t.title === title) ? S.mood : undefined
-    const { slug } = await api(app, '/api/autopilot', { title, autoTopic, genre: S.genre, language: S.language, minutes: S.minutes, mood })
+    // แก่นเรื่องที่ตัวตรวจเรื่องซ้ำสรุปไว้ → เก็บไว้กับคลิป ให้รอบถัดไปรู้ว่าคลิปนี้เล่าเรื่องอะไร (ดู extension/dedupe.js)
+    const key = S.scoredTopics?.find((t) => t.title === title)?.key
+    const { slug } = await api(app, '/api/autopilot', { title, autoTopic, genre: S.genre, language: S.language, minutes: S.minutes, mood, key })
     // เปิดแท็บ ChatGPT ไว้ก่อน — ถ้ายังไม่ได้ล็อกอินจะเห็นทันที
     if (!(await reuseTab('chatTabId', ['https://chatgpt.com/*', 'https://chat.openai.com/*']))) {
       const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: false })
@@ -1486,21 +1508,38 @@ $('suggestTopics').addEventListener('click', async () => {
     // หัวข้อที่ทำไปแล้ว → ห้ามเสนอซ้ำ (ถ้าโปรแกรมในเครื่องยังไม่เปิดก็ข้ามไป)
     const app = await localApp().catch(() => null)
     const history = app ? await api(app, '/api/topics/history').catch(() => ({})) : {}
-    const avoid = history.done ?? []
+    const recent = history.recent ?? [] // 100 เรื่องล่าสุด + แก่นเรื่อง — ใช้ตรวจเรื่องซ้ำ
+    const avoid = recent.length ? recent.map((r) => r.title) : history.done ?? []
     const seen = history.seen ?? []
     const text = await withBusy('suggestStatus', 'ChatGPT กำลังคิดหัวข้อและให้คะแนน', async () =>
       askChatGPT(scoredTopicsPrompt(await blueprint(), { titleLanguage: S.language, minutes: S.minutes, avoid, seen, genre: S.genre, narration: clip?.narration, mood: newClipMood() })),
     )
-    const topics = parseScoredTopics(text)
-    // จำไว้ว่าเสนออะไรไปแล้ว — ครั้งหน้าให้ ChatGPT เลี่ยง
-    if (topics.length && app) api(app, '/api/topics/history', { titles: topics.map((t) => t.title) }).catch(() => {})
-    if (!topics.length) return setStatus('suggestStatus', 'อ่านตารางหัวข้อจากคำตอบไม่ออก — กดเสนอใหม่อีกครั้ง', 'error')
-    S.scoredTopics = topics
+    const offered = parseScoredTopics(text)
+    // จำไว้ว่าเสนออะไรไปแล้ว — ครั้งหน้าให้ ChatGPT เลี่ยง (รวมข้อที่จะถูกตัดเพราะซ้ำ)
+    if (offered.length && app) api(app, '/api/topics/history', { titles: offered.map((t) => t.title) }).catch(() => {})
+    if (!offered.length) return setStatus('suggestStatus', 'อ่านตารางหัวข้อจากคำตอบไม่ออก — กดเสนอใหม่อีกครั้ง', 'error')
+
+    // ── ตัวกันทำเรื่องซ้ำ (ดู extension/dedupe.js) — ชั้นที่ 1 เทียบชื่อในเครื่อง · ชั้นที่ 2 ChatGPT ตัดสินเนื้อเรื่อง ──
+    const screened = recent.length
+      ? await withBusy('suggestStatus', `กำลังตรวจเรื่องซ้ำกับ ${recent.length} เรื่องล่าสุด`, () =>
+        screenTopics(offered, recent, (prompt) => askChatGPT(prompt)))
+      : { fresh: offered, rejected: [], judged: false, error: null }
+    const cut = screened.rejected
+    if (!screened.fresh.length) {
+      S.scoredTopics = []
+      await save()
+      return setStatus('suggestStatus', `ทั้ง ${cut.length} หัวข้อที่เสนอมาซ้ำกับเรื่องที่ทำไปแล้ว — กด "เสนอหัวข้อใหม่" อีกครั้ง`, 'error')
+    }
+    S.scoredTopics = screened.fresh
     // เลือกเรื่องคะแนนสูงสุดไว้ก่อน เปลี่ยนได้ด้วยการกดเรื่องอื่น
-    $('autoTitle').value = topics[0].title
-    S.autoTitle = topics[0].title
+    $('autoTitle').value = screened.fresh[0].title
+    S.autoTitle = screened.fresh[0].title
     await save()
-    setStatus('suggestStatus', `ได้ ${topics.length} หัวข้อ — เลือกเรื่องที่คะแนนสูงสุดไว้ให้แล้ว กดเรื่องอื่นเพื่อเปลี่ยน`, 'ok')
+    const cutNote = cut.length ? ` · ตัดออก ${cut.length} ข้อเพราะซ้ำ (${cut.map((r) => r.title).join(' · ')})` : ''
+    const half = recent.length && !screened.judged // ChatGPT ตรวจไม่สำเร็จ → ได้แค่ชั้นที่ 1
+    setStatus('suggestStatus',
+      `ได้ ${screened.fresh.length} หัวข้อ${cutNote}${half ? ' · ⚠ ให้ ChatGPT ตรวจเนื้อเรื่องไม่สำเร็จ ตรวจได้แค่ชื่อเรื่อง' : ''} — เลือกเรื่องที่คะแนนสูงสุดไว้ให้แล้ว กดเรื่องอื่นเพื่อเปลี่ยน`,
+      half ? '' : 'ok')
   } catch (err) {
     failStatus('suggestStatus', err)
   }

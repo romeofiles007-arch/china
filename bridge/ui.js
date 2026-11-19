@@ -352,10 +352,13 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
       }
 
       // หัวข้อที่ทำแล้ว + เคยเสนอแล้ว — แผงข้างส่งให้ ChatGPT เลี่ยง · เสนอเสร็จแล้วบันทึกเพิ่ม
+      // recent = เรื่องที่ทำไปแล้ว 100 เรื่องล่าสุดพร้อมแก่นเรื่อง — แผงข้างใช้ตรวจเรื่องซ้ำ (ดู extension/dedupe.js)
       if (path === '/api/topics/history') {
         const { listDoneTitles, listSeenTitles, addSeenTitles } = await import('../pipeline/lib/topics.mjs')
+        const { recentTopics, GUARD_WINDOW } = await import('../pipeline/lib/topic-guard.mjs')
         if (req.method === 'POST') addSeenTitles((await readBody(req)).titles ?? [])
-        return json(res, 200, { done: listDoneTitles(), seen: listSeenTitles() }), true
+        const recent = recentTopics(GUARD_WINDOW).map((r) => ({ title: r.title, key: r.key }))
+        return json(res, 200, { done: listDoneTitles(), seen: listSeenTitles(), recent }), true
       }
 
       if (req.method === 'GET' && path === '/api/projects') {
@@ -799,6 +802,16 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         if (title) {
           mkdirSync(join(ROOT, 'projects'), { recursive: true })
           writeFileSync(SELECTED_FILE, JSON.stringify({ n: 1, title, selectedAt: new Date().toISOString() }, null, 2))
+        }
+        // แก่นเรื่องที่ตัวตรวจเรื่องซ้ำสรุปไว้ตอนเสนอหัวข้อ → เก็บไว้กับคลิป ให้รอบถัดไปเทียบเรื่องซ้ำได้แม่นขึ้น
+        // (ทำต่อคลิปเดิมไม่เขียนทับของเดิม)
+        const key = String(body.key ?? '').trim().slice(0, 120)
+        if (slug && key) {
+          const pickFile = join(ROOT, 'projects', slug, '01_script', 'topics_scored.json')
+          if (!existsSync(pickFile)) {
+            mkdirSync(join(ROOT, 'projects', slug, '01_script'), { recursive: true })
+            writeFileSync(pickFile, JSON.stringify({ chosen: { title, key, genre }, candidates: [], at: Date.now(), guard: { by: 'panel' } }, null, 2))
+          }
         }
         return json(res, 200, { slug, run: started }), true
       }

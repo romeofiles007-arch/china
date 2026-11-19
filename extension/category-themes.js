@@ -40,7 +40,10 @@ export function categoryThemeCss() {
     const departments=[]
     return `${selector}{${colors.concat(departments,[`--world-image:url('${theme.night}')`,`--temple-wood:${p.wood}`,`--temple-gold:${p.gold}`,`--hero-edge:${p.gold}`,`--temple-surface:${p.pick}`,`--sea-top:${p.pick}`,`--sand-deep:${p.gold}`]).join(';')}}`
   }
-  return Object.entries(CATEGORY_THEMES).map(([id,t])=>rule(id,t,'light')).join('\n') + '\n@media(prefers-color-scheme: dark){\n' + Object.entries(CATEGORY_THEMES).map(([id,t])=>rule(id,t,'dark')).join('\n')+'\n}'
+  // "คละทุกหมวด" (mix) ต้องมีสีด้วย — เดิมไม่มี html[data-category='mix'] ตัวแปร --category-* จึงว่าง
+  // หน้าโพสต์อัตโนมัติ (#posting) ใช้ตัวแปรชุดนี้เป็นพื้นหลัง → พื้นโปร่งใส ซ้อนทับหน้าหลักจนอ่านไม่ได้
+  const all=[...Object.entries(CATEGORY_THEMES),['mix',themeForGenre('mix')]]
+  return all.map(([id,t])=>rule(id,t,'light')).join('\n') + '\n@media(prefers-color-scheme: dark){\n' + all.map(([id,t])=>rule(id,t,'dark')).join('\n')+'\n}'
 }
 
 export function applyCategoryTheme(genre, doc=document) {

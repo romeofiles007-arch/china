@@ -26,9 +26,11 @@ html[data-category] .agentBlock .blockTitle { font-weight: 650; }
 html[data-category] .stepNo { border-radius: 6px; }
 html[data-category] .crewTip { background: var(--temple-wood); border-color: var(--line); }
 html[data-category] .crewTip small { color: #e8ddc6; }
+/* ค่าสำรองเป็นสีของหน้าโพสต์เอง — หมวดไหนไม่มีตัวแปร --category-* พื้นหลังต้องไม่กลายเป็นโปร่งใส */
 #posting {
-  --bg: var(--category-bg); --panel: var(--category-panel); --ink: var(--category-ink); --muted: var(--category-muted);
-  --line: var(--category-line); --accent: var(--category-accent); --accent-ink: var(--category-accent-ink); --pick: var(--category-pick);
+  --bg: var(--category-bg, var(--gull-bg)); --panel: var(--category-panel, var(--gull-panel)); --ink: var(--category-ink, #eef2f6); --muted: var(--category-muted, #b8c2cc);
+  --line: var(--category-line, var(--gull-line)); --accent: var(--category-accent, var(--gull)); --accent-ink: var(--category-accent-ink, var(--gull-ink)); --pick: var(--category-pick, var(--gull-pick));
+  background: var(--bg, #1b2430);
 }
 /* หมวดสามก๊ก: ทองชัดบนปุ่มหลัก ใช้หมึกเข้มเพื่อให้อ่านได้ */
 html[data-category='sanguo'] .primary,

@@ -258,6 +258,35 @@ export function figureInTitle(title, category = null) {
     .find((m) => [m.name, ...m.aka].some((n) => t.includes(n))) ?? null
 }
 
+/**
+ * กระจายเรื่องให้ทั่ว — ดูจากชื่อคลิปที่ทำไปแล้วว่าช่วงหลังกองอยู่ที่วรรณกรรมเรื่องไหน/บุคคลไหน
+ * แล้วบอกให้รอบนี้เลี่ยง + ดึงเรื่องที่ยังไม่เคยทำเข้ามา
+ *
+ * คนละเรื่องกับ "ตัวกันทำเรื่องซ้ำ" (extension/dedupe.js): นั่นกันเรื่องเดียวกันถูกทำซ้ำ
+ * อันนี้กันช่องเอียงไปกองที่สามก๊กทั้งช่อง แม้ทุกคลิปจะเป็นคนละตอนก็จริง
+ * ประวัติยังน้อย (ไม่ถึง 4 คลิป) หรือจับเรื่องที่มาไม่ได้เลย → ไม่ต้องใส่กฎนี้
+ */
+export function spreadRule(recentTitles = [], { look = 30, top = 3 } = {}) {
+  if (recentTitles.length < 4) return ''
+  const works = new Map()
+  const people = new Map()
+  for (const t of recentTitles.slice(0, look)) {
+    const f = figureInTitle(t)
+    if (!f) continue
+    if (f.work) works.set(f.work, (works.get(f.work) ?? 0) + 1)
+    people.set(f.name, (people.get(f.name) ?? 0) + 1)
+  }
+  if (!works.size) return ''
+  const hot = [...works].sort((a, b) => b[1] - a[1]).filter(([, n]) => n >= 2).slice(0, top)
+  const hotPeople = [...people].sort((a, b) => b[1] - a[1]).filter(([, n]) => n >= 2).slice(0, 5)
+  const never = CLASSIC_WORKS.map((w) => w.name).filter((n) => !works.has(n))
+  if (!hot.length && !never.length) return ''
+  return `\n**กระจายเรื่องให้ทั่ว (นับจากคลิปที่ทำไปแล้ว ${Math.min(recentTitles.length, look)} คลิป):**${
+    hot.length ? `\n- ทำไปเยอะแล้ว: ${hot.map(([w, n]) => `${w} ${n} คลิป`).join(' · ')} — รอบนี้เอาได้ไม่เกินเรื่องละ 1 ข้อ` : ''}${
+    hotPeople.length ? `\n- บุคคลที่ทำไปหลายคลิปแล้ว ห้ามใช้ซ้ำในรอบนี้: ${hotPeople.map(([p, n]) => `${p} (${n} คลิป)`).join(' · ')}` : ''}${
+    never.length ? `\n- ยังไม่เคยทำเลย เอามาอย่างน้อย 2 ข้อ: ${never.join(' · ')}` : ''}\n`
+}
+
 /** หมวดของแต่ละหัวข้อ: ระบุหมวดเดียว → ทุกหัวข้อหมวดนั้น · 'mix'/ว่าง → คละครบทั้ง 3 หมวด */
 export function pickGenres(genre = 'mix', count = 5) {
   const one = categoryOf(genre)
@@ -535,7 +564,7 @@ export function scoredTopicsPrompt(blueprint, { titleLanguage = 'th', minutes = 
 ${genreRule(genre, narration)}${moodRule(mood, 'topics')}
 ใช้มุมเล่าข้อละแบบ (ห้ามซ้ำกัน): ${pickAngles(5, story).map((a, i) => `${i + 1}) ${a}`).join(' · ')}
 ${themeRule(themes, { story })}
-${avoid.length ? `\nห้ามซ้ำหรือคล้ายกับหัวข้อที่ทำคลิปไปแล้ว:\n${avoid.map((t) => `- ${t}`).join('\n')}\n` : ''}${seen.length ? `\nหัวข้อเหล่านี้เคยเสนอไปแล้ว — ห้ามเสนอซ้ำ และห้ามเป็นสิ่งของ/เหตุการณ์/ปรากฏการณ์เดียวกันที่แค่เปลี่ยนถ้อยคำ ให้หาเรื่องใหม่ที่ยังไม่อยู่ในรายการ:\n${seen.slice(0, 80).map((t) => `- ${t}`).join('\n')}\n` : ''}
+${avoid.length ? `\nห้ามซ้ำหรือคล้ายกับหัวข้อที่ทำคลิปไปแล้ว:\n${avoid.map((t) => `- ${t}`).join('\n')}\n` : ''}${spreadRule(avoid)}${seen.length ? `\nหัวข้อเหล่านี้เคยเสนอไปแล้ว — ห้ามเสนอซ้ำ และห้ามเป็นสิ่งของ/เหตุการณ์/ปรากฏการณ์เดียวกันที่แค่เปลี่ยนถ้อยคำ ให้หาเรื่องใหม่ที่ยังไม่อยู่ในรายการ:\n${seen.slice(0, 80).map((t) => `- ${t}`).join('\n')}\n` : ''}
 ให้คะแนนแต่ละหัวข้อ 1–10 อย่างตรงไปตรงมา (ห้ามให้ทุกข้อเท่ากัน):
 - Hook = เห็นชื่อแล้วอยากกดดูทันทีแค่ไหน (ตรงกับทุกข์ใจของคนดู ความสงสัย มุมมองใหม่ต่อเรื่องที่คิดว่ารู้แล้ว)
 - Search = คนค้นหา/สนใจเรื่องนี้ได้ต่อเนื่องแค่ไหน (evergreen, เทศกาลจีนที่ใกล้มาถึง หรือกระแสหนัง/ซีรีส์จีนที่ยังแรง)
