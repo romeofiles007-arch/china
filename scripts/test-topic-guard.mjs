@@ -130,9 +130,11 @@ await test('กระจายเรื่อง: บอกเรื่อง/�
   assert.ok(rule.includes('ยังไม่เคยทำเลย'))
   for (const w of ['ซ้องกั๋ง', 'ห้องสิน', 'เปาบุ้นจิ้น', 'ชอหานสงคราม']) assert.ok(rule.includes(w), w)
   assert.ok(!/- ทำไปเยอะแล้ว:.*ไซอิ๋ว/.test(rule), 'เรื่องที่ทำไปคลิปเดียวยังไม่นับว่าเยอะ')
-  // ประวัติน้อยเกินไป หรือจับเรื่องที่มาไม่ได้ → ไม่ต้องใส่กฎนี้
-  assert.equal(spreadRule(titles.slice(0, 3)), '')
-  assert.equal(spreadRule(['เล่าจื๊อสอนอะไรเรื่องถอยหนึ่งก้าว', 'นิทานจีนนกกระเรียนกับชาวนา', 'สุภาษิตจีนที่ใช้ได้จริง', 'ปรัชญาขันทีในวัง']), '')
+  // จับวรรณกรรมที่มาไม่ได้เลย → เหลือแค่กฎบุคคลที่เพิ่งทำ
+  // ประวัติยังน้อย (ไม่ถึง 4 คลิป) → ยังไม่นับว่าเรื่องไหนเยอะ แต่บุคคลที่เพิ่งทำห้ามใช้ซ้ำทันที
+  const few = spreadRule(titles.slice(0, 3))
+  assert.ok(!few.includes('ทำไปเยอะแล้ว') && /เพิ่งทำไป.*ขงเบ้ง.*กวนอู/.test(few), few)
+  assert.equal(spreadRule(['เล่าจื๊อสอนอะไรเรื่องถอยหนึ่งก้าว', 'นิทานจีนนกกระเรียนกับชาวนา', 'สุภาษิตจีนที่ใช้ได้จริง', 'ปรัชญาขันทีในวัง']).trim(), '**กระจายเรื่อง:** บุคคลที่เพิ่งทำไป ห้ามใช้ในรอบนี้: เล่าจื๊อ — เลือกคนอื่นหรือเรื่องอื่นแทน')
   assert.equal(CLASSIC_WORKS.length, 10)
 })
 
@@ -157,6 +159,49 @@ await test('โปรแกรมในเครื่องส่งเรื�
   assert.equal(typeof recentTopics, 'function')
   assert.ok(Array.isArray(recentTopics(3)))
   assert.match(read('pipeline/lib/topic-guard.mjs'), /from '\.\.\/\.\.\/extension\/dedupe\.js'/)
+})
+
+
+// ผู้ใช้ (19 พ.ย. 2026): "ทำไมทำแต่เรื่องเดิม" — prompt เสนอหัวข้อเคยฝังชื่อขงเบ้ง/ซุนวู/เล่าจื๊อไว้ในมุมเล่าและหลักคิดแกน
+// ChatGPT จึงเสนอคนเดิมทุกรอบ แล้วระบบเลือกข้อคะแนนสูงสุด (คนดังสุด = ขงเบ้ง) ทุกครั้ง
+await test('มุมเล่าและหลักคิดแกนไม่ผูกกับบุคคลหรือเรื่องใดเรื่องหนึ่ง', async () => {
+  const { ANGLES, WISDOM_POINTS, FIGURES } = await import('../extension/prompts.js')
+  const names = FIGURES.flatMap((f) => [f.name, ...f.aka]).filter((n) => n.length >= 3)
+  for (const line of [...ANGLES, ...WISDOM_POINTS]) {
+    const hit = names.find((n) => line.includes(n))
+    assert.ok(!hit, `"${line}" ผูกกับ ${hit}`)
+  }
+  for (const w of ['สามก๊ก', 'ขงเบ้ง', 'บุญ', 'นรก', 'บาป', 'หลักธรรม']) {
+    assert.ok(!ANGLES.join(' ').includes(w) && !WISDOM_POINTS.join(' ').includes(w), w)
+  }
+})
+
+await test('เลือกหัวข้อ: คะแนนสูงแต่เป็นคน/เรื่องที่เพิ่งทำ → หลีกให้เรื่องใหม่', async () => {
+  const { pickVaried } = await import('../extension/prompts.js')
+  const offered = [
+    { title: 'ขงเบ้งจะทำอย่างไรถ้าต้องเริ่มใหม่', score: 92 },
+    { title: 'บู๊สงปราบเสือด้วยอะไร', score: 80 },
+    { title: 'นิทานจีนชายชราเสียม้า', score: 78 },
+  ]
+  const recent = ['ขงเบ้งทิ้งกลยุทธ์อะไรไว้ให้คนรุ่นหลัง']
+  assert.equal(pickVaried(offered, recent)[0].title, 'บู๊สงปราบเสือด้วยอะไร')
+  assert.equal(pickVaried(offered, recent).length, 3, 'ไม่ทิ้งข้อไหน แค่เรียงใหม่')
+  // ไม่มีประวัติ → เรียงตามคะแนนเดิม
+  assert.equal(pickVaried(offered, [])[0].title, offered[0].title)
+  // เรื่องเดียวกัน (สามก๊ก) แต่คนละคน → หักน้อยกว่าคนเดิม
+  const sameWork = [{ title: 'กวนอูกับคำสัญญา', score: 85 }, { title: 'ขงเบ้งกับพัดขนนก', score: 90 }]
+  assert.equal(pickVaried(sameWork, recent)[0].title, 'กวนอูกับคำสัญญา')
+})
+
+await test('กระจายเรื่องตั้งแต่คลิปแรก: บุคคลที่เพิ่งทำห้ามใช้ในรอบถัดไป', () => {
+  const rule = spreadRule(['ขงเบ้งทิ้งกลยุทธ์อะไรไว้ให้คนรุ่นหลัง'])
+  assert.match(rule, /เพิ่งทำไป.*ขงเบ้ง/)
+  assert.ok(!rule.includes('ทำไปเยอะแล้ว'))
+})
+
+await test('autopilot เลือกหัวข้อแบบกระจายเรื่อง ไม่ใช่คะแนนสูงสุดตรงๆ', () => {
+  const src = read('pipeline/autopilot.mjs')
+  assert.match(src, /pickVaried\(screened\.fresh, recent\.map\(\(r\) => r\.title\)\)/)
 })
 
 console.log(`\nผ่าน ${passed} ข้อ`)
