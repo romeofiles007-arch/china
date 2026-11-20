@@ -245,4 +245,41 @@ test('Flow tile cache cannot carry images across account/project SPA navigation'
   assert.equal(status().images, 1, 'old project image must be forgotten')
 })
 
+// ── Flow ตอบ "Something went wrong" — แยกให้ออกว่าถูกกันบอตจริง หรือแค่ Flow คนใช้เยอะ ──
+// เจอจริง 20 พ.ย. 2026 ที่ chrome02: ได้ภาพแล้ว 9/10 ใบ แล้ว Flow ขึ้น "Flow is experiencing high demand"
+// โค้ดเดิมนับเป็น FLOW_BLOCKED → ทิ้งงานทั้งคลิปและหยุดผลิตทั้งชุด ทั้งที่รอสักพักก็สั่งต่อได้
+test('Flow คิวเต็ม (high demand) = busy ไม่ใช่ถูกบล็อก', () => {
+  const real = 'Something went wrong. Please try again. Try again Use side panel · warning Failed Flow is experiencing high demand. Please try again later. You have not been charged for this generation. refresh undo delete_forever'
+  assert.equal(T.agentFailureKind(real), 'busy')
+  assert.equal(T.agentFailureKind('The agent is experiencing high demand. Please try again later.'), 'busy')
+  assert.equal(T.agentFailureKind('เกิดข้อผิดพลาด · ขณะนี้มีผู้ใช้งานจำนวนมาก โปรดลองอีกครั้งภายหลัง'), 'busy')
+  assert.equal(T.agentFailureKind('Too many requests'), 'busy')
+})
+
+test('Flow เตือนการใช้งานผิดปกติ = blocked (ต้องหยุดทั้งชุด) แม้จะมีคำว่า high demand ปนมา', () => {
+  assert.equal(T.agentFailureKind('Something went wrong · We noticed some unusual activity. Note that browser extensions that modify the page may cause issues.'), 'blocked')
+  assert.equal(T.agentFailureKind('unusual activity · experiencing high demand'), 'blocked')
+  assert.equal(T.agentFailureKind('ตรวจพบกิจกรรมที่ผิดปกติ'), 'blocked')
+})
+
+test('ผิดพลาดเฉยๆ ไม่บอกสาเหตุ = failed · ไม่มีข้อความ = ""', () => {
+  assert.equal(T.agentFailureKind('Something went wrong. Please try again. Try again Use side panel'), 'failed')
+  assert.equal(T.agentFailureKind(''), '')
+  // เรียกซ้ำต้องได้ผลเดิม (regex แบบ /g จำตำแหน่งค้างได้ ห้ามใช้)
+  for (let i = 0; i < 3; i++) assert.equal(T.agentFailureKind('Flow is experiencing high demand'), 'busy')
+})
+
+test('ตัวสั่ง Flow ใช้ตัวแยกนี้: busy → FLOW_BUSY รอแล้วสั่งต่อ · มีภาพแล้วไม่ทิ้งทั้งคลิป', () => {
+  const agent = src('content-flow-agent.js')
+  assert.match(agent, /agentFailureKind\(failure\)/)
+  assert.match(agent, /FLOW_BUSY:/)
+  // การ์ดคำตอบเก่าที่ค้างบนหน้า ห้ามนับเป็นความล้มเหลวของ prompt ใหม่
+  assert.match(agent, /const stale = new Set\(\$\$\('flow-agent-response-header'\)\)/)
+  // คำสั่งต่อ (สั่งช็อตที่ขาด) ล้ม แต่มีภาพแล้ว → เลิกถาม ส่งภาพที่ได้กลับไป ให้ autopilot สั่งช็อตที่ขาดรอบหน้า
+  assert.match(agent, /async function followUp\(/)
+  // การ์ดคำตอบ: ใบล่าสุดที่ไม่ใช่ของเก่า ($$ = ทุกใบบนหน้า · ถ้าเผลอเป็น $ จะได้ใบแรกใบเดียว)
+  assert.ok(agent.includes("const agentCard = (isStale = () => false) => $$('flow-agent-response-header').filter((c) => visible(c) && !isStale(c)).at(-1)"))
+  assert.ok(!/\n\s+await sendPrompt\((goInstruction|renameInstruction|continueInstruction)/.test(agent), 'คำสั่งต่อทุกจุดต้องผ่าน followUp')
+})
+
 console.log(`\nผ่าน ${passed} ข้อ`)

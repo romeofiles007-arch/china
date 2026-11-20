@@ -79,5 +79,21 @@
    */
   const strayMenu = (labels) => labels.length > 0 && !labels.some(isNanoBanana)
 
-  globalThis.CartoonFlowText = { modelKey, sameModel, isNanoBanana, labelText, pageTranslated, TRANSLATED_HINT, escapeMenus, strayMenu }
+  /**
+   * Flow ตอบ "Something went wrong" — แยกว่าเป็นเรื่องไหน (ข้อความ = การ์ดคำตอบ + คำเตือนบนหน้า)
+   * 'blocked' = Flow เตือนการใช้งานผิดปกติ (กันบอต) → สั่งซ้ำกี่ครั้งก็เหมือนเดิม ต้องหยุดทั้งชุด
+   * 'busy'    = Flow คนใช้เยอะ / คิวเต็ม → รอสักพักแล้วสั่งต่อได้ ห้ามทิ้งงาน
+   * 'failed'  = ผิดพลาดเฉยๆ ไม่บอกสาเหตุ · '' = ไม่มีข้อความ
+   * เจอจริง 20 พ.ย. 2026: ได้ภาพ 9/10 แล้ว Flow ขึ้น "Flow is experiencing high demand" — เดิมนับเป็นถูกบล็อก ทิ้งทั้งคลิปและหยุดผลิตทั้งชุด
+   * ไม่ใช้ regex แบบ /g ตรงนี้ (.test จำตำแหน่งค้าง เรียกครั้งที่สองได้ผลผิด)
+   */
+  function agentFailureKind(message) {
+    const t = String(message ?? '')
+    if (!t.trim()) return ''
+    if (/unusual activity|กิจกรรมที่ผิดปกติ|การใช้งานที่ผิดปกติ|ผิดปกติ/i.test(t)) return 'blocked'
+    if (/high demand|try again later|too many requests|rate limit|มีผู้ใช้งานจำนวนมาก|มีความต้องการสูง|ลองอีกครั้งภายหลัง/i.test(t)) return 'busy'
+    return 'failed'
+  }
+
+  globalThis.CartoonFlowText = { modelKey, sameModel, isNanoBanana, labelText, pageTranslated, TRANSLATED_HINT, escapeMenus, strayMenu, agentFailureKind }
 })()

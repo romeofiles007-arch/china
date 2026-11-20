@@ -20,7 +20,7 @@ globalThis.__cartoon_flow_agent = true
  */
 const VERSION = chrome.runtime.getManifest().version
 // flow-text.js โหลดก่อนไฟล์นี้ (manifest + CONTENT_FILES ใน background.js) — เทียบชื่อรุ่นไม่สนภาษา · ปิดเมนู · ตรวจหน้าที่ถูกแปล
-const { sameModel, labelText, pageTranslated, TRANSLATED_HINT, escapeMenus, strayMenu } = globalThis.CartoonFlowText
+const { sameModel, labelText, pageTranslated, TRANSLATED_HINT, escapeMenus, strayMenu, agentFailureKind } = globalThis.CartoonFlowText
 /** กล่องข้อความของ Flow ที่ค้างคาหน้าอยู่ (เช่นประกาศรุ่นใหม่) — บอกผู้ใช้ให้ปิดเอง ไม่กดปุ่มในกล่องแทนผู้ใช้ */
 const blockingDialog = () => $$('mat-dialog-container').filter(visible).map((d) => text(d).slice(0, 60))[0] ?? ''
 /** ข้อความ error ที่ส่งกลับ — หน้าถูก Chrome แปลอยู่ให้บอกสาเหตุนี้ก่อน เพราะเป็นต้นเหตุที่ทำให้หาปุ่มไม่เจอ */
@@ -536,6 +536,7 @@ async function sendPrompt(prompt, attachments) {
   }
   // ส่งแล้วต้องเห็นว่า Flow รับงานจริง ไม่ใช่แค่ช่องพิมพ์ว่าง — ว่างเพราะถูกปฏิเสธก็ว่างเหมือนกัน
   let failure = ''
+  let kind = ''
   for (let round = 1; round <= 3; round++) {
     let pasted = false
     for (let attempt = 0; attempt < 3 && !pasted; attempt++) {
@@ -545,35 +546,42 @@ async function sendPrompt(prompt, attachments) {
     if (!pasted) throw new Error('วาง prompt ลงช่องพิมพ์ของ Flow ไม่ได้')
     await waitFor(() => (SEL.send() && !SEL.send().disabled ? SEL.send() : null), { label: 'ปุ่มส่งพร้อมใช้งาน' })
     await chrome.storage.local.set({ [FLOW_LAST_PROMPT_KEY]: Date.now() })
+    // การ์ดคำตอบที่อยู่บนหน้าก่อนส่ง (เช่นข้อผิดพลาดของรอบก่อน) ไม่ใช่คำตอบของ prompt นี้ — จำข้อความไว้ ถ้าไม่เปลี่ยนก็ไม่นับ
+    const stale = new Set($$('flow-agent-response-header'))
+    const staleText = new Map([...stale].map((c) => [c, text(c)]))
+    const isStale = (c) => stale.has(c) && staleText.get(c) === text(c)
     await trustedEnter(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), prompt)
-    await waitFor(() => agentBusy() || agentFailed() || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
+    await waitFor(() => agentBusy() || agentFailed(isStale) || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
     // รอให้การ์ดคำตอบนิ่งก่อนตัดสิน — Flow ขึ้น "เกิดข้อผิดพลาด" ภายในไม่กี่วินาทีเมื่อไม่รับงาน
-    const failed = await waitFor(agentFailed, { timeout: 12_000, interval: 500, label: 'คำตอบของ Agent' }).catch(() => null)
+    const failed = await waitFor(() => agentFailed(isStale), { timeout: 12_000, interval: 500, label: 'คำตอบของ Agent' }).catch(() => null)
     if (!failed) return
     failure = [labelText(failed), pageAlerts()].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim().slice(0, 220)
+    kind = agentFailureKind(failure)
     // Flow กันบอต — ลองใหม่กี่ครั้งก็เหมือนเดิม และคลิปถัดไปก็เจอเหมือนกัน หยุดทั้งชุดดีกว่าไล่ทำต่อให้พังหมด
-    if (L.unusualActivity.test(failure)) break
+    // Flow คิวเต็ม — สั่งซ้ำทันทีก็โดนอีก ให้คนเรียกรอเป็นนาที (BUSY_WAITS_MS) แล้วค่อยสั่งใหม่
+    if (kind === 'blocked' || kind === 'busy') break
     await sleep(5000 * round)
   }
-  const blocked = L.unusualActivity.test(failure)
-  throw new Error(
+  if (kind === 'busy') throw Object.assign(new Error(`FLOW_BUSY: Flow คิวเต็ม (คนใช้เยอะ) — "${failure}"`), { kind })
+  const blocked = kind === 'blocked'
+  throw Object.assign(new Error(
     `FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent — "${failure}"` +
     (blocked
       ? ' · Flow มองว่าการใช้งานผิดปกติ (มันเตือนเรื่องส่วนขยายที่แก้หน้าเว็บด้วย) หยุดสั่งงานอัตโนมัติสักพัก แล้วเปิดหน้า Flow สั่งสร้างภาพเองด้วยมือสักครั้งให้ผ่านก่อน ค่อยเริ่มผลิตใหม่'
       : ' · ลองส่งใหม่ครบ 3 ครั้งแล้วยังไม่ผ่าน เปิดหน้า Flow ดูว่ามีอะไรค้างอยู่')
-  )
+  ), { kind: kind || 'failed' })
 }
 
 const agentBusy = () => !!byAria(L.stop).find(visible)
-/** การ์ดคำตอบของ Agent บนหน้าโปรเจกต์ (ไม่ใช่แผงข้าง) */
-const agentCard = () => $$('flow-agent-response-header').find(visible) ?? null
+/** การ์ดคำตอบของ Agent บนหน้าโปรเจกต์ (ไม่ใช่แผงข้าง) — ใบล่าสุดที่ไม่ใช่ของเก่า (isStale) */
+const agentCard = (isStale = () => false) => $$('flow-agent-response-header').filter((c) => visible(c) && !isStale(c)).at(-1) ?? null
 /**
  * Flow ตอบกลับทันทีว่ารับงานไม่ได้ — ช่องพิมพ์ว่างเหมือนส่งสำเร็จ แต่ไม่มีงานเดินสักอย่าง
  * ต้องมีทั้งข้อความผิดพลาดและปุ่ม "ลองอีกครั้ง" ถึงนับ ไม่งั้นคำตอบปกติที่บังเอิญมีคำว่าผิดพลาดจะโดนจับผิด
  * ไม่จับตรงนี้ = ไปรอภาพที่ไม่มีวันมาอีกสิบกว่านาที แล้วรายงานผิดเรื่อง (เจอจริง 20 พ.ย. 2026)
  */
-const agentFailed = () => {
-  const card = agentCard()
+const agentFailed = (isStale) => {
+  const card = agentCard(isStale)
   if (!card || !L.agentFailed.test(text(card))) return null
   return $$('button', card).some((b) => visible(b) && L.tryAgain.test(text(b))) ? card : null
 }
@@ -1045,7 +1053,47 @@ async function runImageJob(job) {
     const credits = await verifyFreeSettings(model, aspect)
     if (credits !== 0) throw new Error(`ชุด ${model} · x1 ใช้ ${Number.isFinite(credits) ? credits : '?'} credits ไม่ใช่ 0 — หยุดไว้ก่อน ไม่ได้สั่ง agent`)
     await configureAgent(model, { dryRun: false, ratio: aspect })
-    await sendPrompt(prompt, attachments)
+    let busyWaits = 0
+    let busyWaited = 0
+    /** Flow คิวเต็ม → รอเว้นช่วงยาวขึ้นเรื่อยๆ (heartbeat ระหว่างรอ) · คืน false เมื่อรอรวมเกิน BUSY_MAX_MS */
+    async function busyPause() {
+      const wait = BUSY_WAITS_MS[Math.min(busyWaits++, BUSY_WAITS_MS.length - 1)]
+      if (busyWaited + wait > BUSY_MAX_MS) return false
+      busyWaited += wait
+      console.warn(`[cartoon-auto] Flow คิวเต็ม (high demand) — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
+      for (const until = Date.now() + wait; Date.now() < until; ) {
+        await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
+        await sleep(20_000)
+      }
+      if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
+      return true
+    }
+    /** ส่ง prompt · Flow ตอบว่าคิวเต็ม → รอแล้วส่งใหม่ (ไม่ใช่ถูกบล็อก ห้ามทิ้งงาน) */
+    async function sendWhenFree(p, files) {
+      for (;;) {
+        try {
+          return await sendPrompt(p, files)
+        } catch (error) {
+          if (error.kind !== 'busy' || !(await busyPause())) throw error
+        }
+      }
+    }
+    /**
+     * คำสั่งต่อ (เริ่มสร้าง · ตั้งชื่อ · สั่งช็อตที่ขาด) — มีภาพแล้วแต่ Flow ไม่รับคำสั่งต่อ (คิวเต็มนานเกิน / ผิดพลาดไม่บอกสาเหตุ)
+     * → คืน false ให้เลิกรอบนี้ ส่งภาพที่ได้กลับไป autopilot สั่งช็อตที่ขาดในรอบหน้าเอง
+     * ถูกกันบอต (blocked) หรือยังไม่มีภาพเลย → โยนต่อเหมือนเดิม
+     */
+    async function followUp(p) {
+      try {
+        await sendWhenFree(p)
+        return true
+      } catch (error) {
+        if (!saved.size || !['busy', 'failed'].includes(error.kind)) throw error
+        console.warn(`[cartoon-auto] Flow ไม่รับคำสั่งต่อ — ส่งภาพที่ได้ ${saved.size}/${expected} ใบกลับไปก่อน: ${error.message}`)
+        return false
+      }
+    }
+    await sendWhenFree(prompt, attachments)
     // รูปตัวละครที่แนบไปกลายเป็น tile ใน project ด้วย — นับเป็นฐานใหม่ ไม่งั้นถูกนับว่าเป็น "ภาพใหม่ที่ยังไม่ตั้งชื่อ"
     await sleep(3000)
     const base = Math.max(before, collectTiles().size)
@@ -1054,8 +1102,6 @@ async function runImageJob(job) {
     const tries = new Map(shots.map((s) => [s.filename, 1])) // จำนวนครั้งที่สั่งแต่ละช็อตไปแล้ว
     const failuresAtStart = failureCounts()
     let seenHighDemand = failuresAtStart.highDemand
-    let busyWaits = 0
-    let busyWaited = 0
     for (let round = 1; ; round++) {
       const beforeRound = collectTiles().size
       await waitAgentIdle(job, { before, expected, stage: 'generate', onTick: () => saveNew(namedPicks(wanted)) })
@@ -1068,7 +1114,7 @@ async function runImageJob(job) {
       if (collectTiles().size - base <= 0 && !picks.size && nudges < 3) {
         nudges++
         if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-        await sendPrompt(goInstruction(shots))
+        if (!(await followUp(goInstruction(shots)))) break
         continue
       }
 
@@ -1077,7 +1123,7 @@ async function runImageJob(job) {
       const unnamed = collectTiles().size - base - picks.size
       if (unnamed > 0 && !picks.size) {
         await toBridge('PROGRESS', { id: job.id, progress: { done: picks.size, total: expected, stage: 'rename' } })
-        await sendPrompt(renameInstruction(shots.filter((s) => !picks.has(s.filename))))
+        if (!(await followUp(renameInstruction(shots.filter((s) => !picks.has(s.filename)))))) break
         await sleep(3000)
         await waitAgentIdle(job, { before, expected, stage: 'rename' })
         await scanAllTiles()
@@ -1097,16 +1143,8 @@ async function runImageJob(job) {
       // Flow คิวเต็ม → ไม่นับเป็นรอบที่ล้ม รอให้คิวว่างก่อนแล้วสั่งช็อตเดิมใหม่
       if (failures.highDemand > seenHighDemand) {
         seenHighDemand = failures.highDemand
-        const wait = BUSY_WAITS_MS[Math.min(busyWaits++, BUSY_WAITS_MS.length - 1)]
-        if (busyWaited + wait > BUSY_MAX_MS) break
-        busyWaited += wait
-        console.warn(`[cartoon-auto] Flow คิวเต็ม (high demand) — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
-        for (const until = Date.now() + wait; Date.now() < until; ) {
-          await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
-          await sleep(20_000)
-        }
-        if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-        await sendPrompt(continueInstruction(missing.slice(0, RETRY_BATCH), { remaining: missing.length, safer: false }))
+        if (!(await busyPause())) break
+        if (!(await followUp(continueInstruction(missing.slice(0, RETRY_BATCH), { remaining: missing.length, safer: false })))) break
         continue
       }
       busyWaits = 0
@@ -1122,7 +1160,7 @@ async function runImageJob(job) {
       if (useSafer && batch.every((s) => tries.get(s.filename) >= SAFE_AFTER + 2)) break
       for (const s of batch) tries.set(s.filename, tries.get(s.filename) + 1)
       if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-      await sendPrompt(continueInstruction(batch, { remaining: missing.length, safer: useSafer }))
+      if (!(await followUp(continueInstruction(batch, { remaining: missing.length, safer: useSafer })))) break
     }
 
     if (!saved.size) {
