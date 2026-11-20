@@ -6,7 +6,7 @@
  *
  * prompt ใช้ชุดเดียวกับ pipeline/ (extension/prompts.js) ผลจึงเหมือนรันจาก terminal
  */
-import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, CATEGORIES, categoryOf, resolveMood } from './prompts.js'
+import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, CATEGORIES, categoryOf, resolveMood, storyTitlesFirst } from './prompts.js'
 import { screenTopics, localDuplicate } from './dedupe.js'
 import { initIcons, setIconLabel } from './icons.js'
 import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from './agents.js'
@@ -1530,15 +1530,16 @@ $('suggestTopics').addEventListener('click', async () => {
       await save()
       return setStatus('suggestStatus', `ทั้ง ${cut.length} หัวข้อที่เสนอมาซ้ำกับเรื่องที่ทำไปแล้ว — กด "เสนอหัวข้อใหม่" อีกครั้ง`, 'error')
     }
-    S.scoredTopics = screened.fresh
+    // ชื่อแนวสอน/ฮาวทูไม่เอา (บทเล่าเรื่องอย่างเดียวแล้ว) — ทุกข้อเป็นแนวสอนก็ยังแสดง
+    S.scoredTopics = storyTitlesFirst(screened.fresh)
     // เลือกเรื่องคะแนนสูงสุดไว้ก่อน เปลี่ยนได้ด้วยการกดเรื่องอื่น
-    $('autoTitle').value = screened.fresh[0].title
-    S.autoTitle = screened.fresh[0].title
+    $('autoTitle').value = S.scoredTopics[0].title
+    S.autoTitle = S.scoredTopics[0].title
     await save()
     const cutNote = cut.length ? ` · ตัดออก ${cut.length} ข้อเพราะซ้ำ (${cut.map((r) => r.title).join(' · ')})` : ''
     const half = recent.length && !screened.judged // ChatGPT ตรวจไม่สำเร็จ → ได้แค่ชั้นที่ 1
     setStatus('suggestStatus',
-      `ได้ ${screened.fresh.length} หัวข้อ${cutNote}${half ? ' · ⚠ ให้ ChatGPT ตรวจเนื้อเรื่องไม่สำเร็จ ตรวจได้แค่ชื่อเรื่อง' : ''} — เลือกเรื่องที่คะแนนสูงสุดไว้ให้แล้ว กดเรื่องอื่นเพื่อเปลี่ยน`,
+      `ได้ ${S.scoredTopics.length} หัวข้อ${cutNote}${half ? ' · ⚠ ให้ ChatGPT ตรวจเนื้อเรื่องไม่สำเร็จ ตรวจได้แค่ชื่อเรื่อง' : ''} — เลือกเรื่องที่คะแนนสูงสุดไว้ให้แล้ว กดเรื่องอื่นเพื่อเปลี่ยน`,
       half ? '' : 'ok')
   } catch (err) {
     failStatus('suggestStatus', err)

@@ -74,7 +74,7 @@ let topicPick = null
 if (autoTopic) {
   const { listDoneTitles, listSeenTitles, addSeenTitles } = await import('./lib/topics.mjs')
   const { recentTopics, screenTopics, GUARD_WINDOW } = await import('./lib/topic-guard.mjs')
-  const { pickVaried } = await import('../extension/prompts.js')
+  const { pickVaried, storyTitlesFirst } = await import('../extension/prompts.js')
   const done = listDoneTitles()
   // ตัวกันทำเรื่องซ้ำ: เทียบกับเรื่องที่ทำไปแล้ว 100 เรื่องล่าสุด (ดู lib/topic-guard.mjs)
   const recent = recentTopics(GUARD_WINDOW)
@@ -110,7 +110,8 @@ if (autoTopic) {
     rejected.push(...screened.rejected)
     guard = { window: recent.length, judged: screened.judged }
     // คะแนนสูงสุดมักเป็นคนดังคนเดิม (ขงเบ้ง) — เรียงใหม่ให้หลีกคน/เรื่องที่เพิ่งทำ
-    topics = pickVaried(screened.fresh, recent.map((r) => r.title))
+    // ชื่อแนวสอน/ฮาวทูไม่เอา (บทเล่าเรื่องอย่างเดียวแล้ว) — ทุกข้อเป็นแนวสอนก็ยังใช้ ไม่ให้งานค้าง
+    topics = pickVaried(storyTitlesFirst(screened.fresh), recent.map((r) => r.title))
     if (!topics.length) console.warn(`   หัวข้อที่เสนอซ้ำกับเรื่องที่ทำไปแล้วทุกข้อ — ขอชุดใหม่ (${attempt}/3)`)
   }
   if (!topics.length) {

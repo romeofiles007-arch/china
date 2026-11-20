@@ -201,7 +201,7 @@ await test('กระจายเรื่องตั้งแต่คลิ�
 
 await test('autopilot เลือกหัวข้อแบบกระจายเรื่อง ไม่ใช่คะแนนสูงสุดตรงๆ', () => {
   const src = read('pipeline/autopilot.mjs')
-  assert.match(src, /pickVaried\(screened\.fresh, recent\.map\(\(r\) => r\.title\)\)/)
+  assert.match(src, /pickVaried\(storyTitlesFirst\(screened\.fresh\), recent\.map\(\(r\) => r\.title\)\)/)
 })
 
 console.log(`\nผ่าน ${passed} ข้อ`)
