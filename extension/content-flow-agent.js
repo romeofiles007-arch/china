@@ -785,6 +785,14 @@ const shotNo = (s) => Number((/\bSHOT\s*0*(\d+)/i.exec(s ?? '') ?? [])[1]) || nu
 const SPECIAL_SHOTS = [{ name: 'cover.png', re: /\bcover\b|thumbnail|ภาพปก/i }, { name: 'riddle.png', re: /\briddle\b|\brebus\b|ปริศนา/i }]
 const tileImg = (id) => document.querySelector(`flow-grid-tile-container img[data-media-id="${CSS.escape(id)}"]`)
 const inEditor = () => /\/edit\//.test(location.pathname)
+/**
+ * กุญแจของไฟล์ภาพจาก URL ของ Flow: https://flow.google.com/asb/<กุญแจ>=s512-rw
+ * ใช้เทียบว่าหน้าแก้ภาพที่เปิดอยู่เป็นภาพเดียวกับไทล์ที่กดไหม
+ * 19 พ.ย. 2026 Flow เลิกใส่ media id ไว้ใน src ของหน้าแก้ภาพ และเปลี่ยน /edit/<id> ให้เป็นคนละ id
+ * กับ data-media-id ของไทล์ → ตัวเทียบเดิมไม่มีทางจริง อ่าน prompt ไม่ได้สักใบ (เจอจริง 20 พ.ย. 2026
+ * ล้มทั้ง 10 ใบ ใบละ 3 ครั้ง = "อ่านไม่ทัน 30 ครั้ง") ส่วน src ของรูปยังเป็นกุญแจเดียวกันทั้งสองหน้า
+ */
+const assetKey = (src) => (/\/asb\/([^=?#]+)/.exec(String(src ?? '')) ?? [])[1] ?? ''
 
 async function backToGrid() {
   if (inEditor()) history.back()
@@ -806,7 +814,11 @@ async function readTilePrompt(id) {
     const box = await waitFor(() => {
       if (!inEditor()) return null
       // ต้องเป็นหน้าแก้ของภาพนี้จริง ไม่ใช่ภาพก่อนหน้าที่ยังค้าง
-      const same = [...document.querySelectorAll('flow-image-editor img')].some((i) => (i.currentSrc || i.src).includes(id) || i.dataset.mediaId === id)
+      const want = assetKey(tiles.get(id)?.src || img.currentSrc || img.src)
+      const same = [...document.querySelectorAll('flow-image-editor img')].some((i) => {
+        const src = i.currentSrc || i.src
+        return (want && assetKey(src) === want) || src.includes(id) || i.dataset.mediaId === id
+      })
       if (!same) return null
       const el = document.querySelector('flow-expandable-prompt')
       if (el && text(el)) return el
