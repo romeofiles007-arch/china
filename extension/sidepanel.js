@@ -3863,6 +3863,11 @@ function renderProdNext() {
     main = `กำลังผลิตคลิป ${st.made + 1}${of}`
     sub = 'ดูความคืบหน้าด้านล่าง'
     live = true
+  } else if (st.active && st.blockPause && st.nextAt) {
+    // Flow บล็อก → ระบบพักเองแล้วทำต่อเอง (bridge/production.js onFlowBlocked) ไม่ต้องกดอะไร
+    main = `Flow บล็อกชั่วคราว — ทำต่อ ${prodTime(st.nextAt)} น.`
+    sub = `${prodLeft(st.nextAt)} · พักให้ Flow หายก่อน${st.blockPause.title ? ` แล้วทำ "${st.blockPause.title}" ต่อ` : ''}`
+    live = true
   } else if (st.active && st.nextAt) {
     main = `ผลิตครั้งต่อไป ${prodTime(st.nextAt)} น.`
     sub = `${prodLeft(st.nextAt)}${s.start === 'daily' ? ` · ทุกวัน วันละ ${s.count || 'ไม่จำกัด'} คลิป` : ''}`

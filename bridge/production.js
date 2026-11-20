@@ -50,7 +50,8 @@ const POST_PAGES = ['all', 'split']
 const TARGET_KEY = /^(fb|yt|tk):[\w.-]{1,64}$/
 
 // dismissed = กดล้างชุดที่ค้างแล้ว (ไม่ทำต่อ) — เริ่มชุดใหม่ล้างค่านี้เอง เพราะ startBatch ใช้ blankState()
-const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [], dismissed: false })
+// blocksInRow = Flow บล็อกติดกันกี่ครั้ง · blockPause = กำลังพักเพราะ Flow บล็อก (แผงข้างบอกผู้ใช้)
+const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [], dismissed: false, blocksInRow: 0, blockPause: null })
 
 function readJson(file, fallback) {
   try {
@@ -110,6 +111,18 @@ export const productionError = lines => (lines ?? []).findLast(line => STOP_ALL.
 // ล้มแบบนี้ทุกคลิปถัดไปก็ล้มเหมือนกัน → หยุดทั้งรอบ: บัญชี Flow ติดลิมิตครบ · เครดิต ElevenLabs หมด (ต้องเติมเอง ไม่สลับเสียง)
 // FLOW_BLOCKED = Flow ปฏิเสธคำสั่งของ Agent (กันบอต/ใช้งานผิดปกติ) ไล่ทำคลิปต่อมีแต่พังทุกคลิป (20 พ.ย. 2026)
 const STOP_ALL = /FLOW_ACCOUNTS_EXHAUSTED|FLOW_BLOCKED|เครดิต ElevenLabs หมด/
+
+/**
+ * Flow บล็อก (เตือนการใช้งานผิดปกติ / ไม่รับคำสั่งนานเกิน) — ทำคลิปถัดไปทันทีก็โดนเหมือนกัน และยิ่งสั่งยิ่งดูเป็นบอต
+ * ผู้ใช้ (20 พ.ย. 2026) เลือกให้พักเองแล้วทำต่อเอง: บล็อกครั้งแรก → พัก 2 ชม. แล้วทำคลิปเดิมต่อจากที่ค้าง
+ * บล็อกซ้ำติดกัน (พักแล้วยังโดน) → หยุดจริง ให้คนเปิด Flow สั่งเองด้วยมือให้ผ่านก่อน
+ */
+export const BLOCK_PAUSE_MS = 2 * 60 * 60_000
+export const MAX_BLOCKS_IN_ROW = 2
+export function onFlowBlocked(blocksInRow = 0, now = Date.now()) {
+  const n = (blocksInRow ?? 0) + 1
+  return n >= MAX_BLOCKS_IN_ROW ? { blocksInRow: n, stop: true, nextAt: null } : { blocksInRow: n, stop: false, nextAt: now + BLOCK_PAUSE_MS }
+}
 
 /**
  * หมวดของคลิปถัดไปตามสัดส่วน % — เลือกหมวดที่ยังได้น้อยกว่าสัดส่วนมากที่สุด (ไม่ใช่สุ่มล้วน)
@@ -227,6 +240,8 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     state.active = true
     state.run = null
     state.failsInRow = 0
+    state.blocksInRow = 0
+    state.blockPause = null
     state.resume = unfinishedClip()
     state.nextAt = at ? nextTimeAt(at, now) : now
     const n = `คลิป ${state.made + 1}${settings.count ? `/${settings.count}` : ''}`
@@ -240,6 +255,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     state.active = false
     state.run = null
     state.nextAt = null
+    state.blockPause = null
     say('หยุดแล้ว')
     save()
   }
@@ -288,13 +304,16 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     state.history.push({ ...result, batch: state.batch, startedAt: state.run.startedAt, endedAt: now, language: state.run.language, genre: state.run.genre ?? null })
     state.history = state.history.slice(-40)
     state.run = null
+    // Flow บล็อก = ปัญหาของ Flow ไม่ใช่ของคลิป → ไม่นับเป็นคลิปล้ม (ไม่เข้า "ล้มติดกัน 3 ครั้ง") และทำคลิปเดิมต่อหลังพัก
+    const blocked = !result.ok && /FLOW_BLOCKED/.test(result.error ?? '')
     if (result.ok) {
       state.made++
       state.failsInRow = 0
-    } else {
+    } else if (!blocked) {
       state.failed++
       state.failsInRow++
     }
+    if (!blocked) state.blocksInRow = 0
     // คลิปเสร็จ → จ่อคิวโพสต์ทันที (posting.enqueueAuto ต่อสายมาจาก server.js)
     if (result.ok && result.slug && settings.autoPost !== 'off' && api.onClipReady) {
       const pages = pagesForNextClip()
@@ -302,7 +321,21 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
         .catch((err) => log(`ผลิตต่อเนื่อง: ส่ง "${result.title ?? result.slug}" เข้าคิวโพสต์ไม่ได้ — ${err.message}`))
     }
     const name = result.title ? `"${result.title}"` : 'คลิป'
-    if (!result.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(result.error ?? '')) {
+    if (blocked) {
+      const next = onFlowBlocked(state.blocksInRow, now)
+      state.blocksInRow = next.blocksInRow
+      if (next.stop) {
+        state.active = false
+        state.nextAt = null
+        state.blockPause = null
+        say(`หยุด — Flow บล็อกซ้ำ ${next.blocksInRow} ครั้งติดกัน แม้พักแล้ว · เปิดหน้า Flow สั่งสร้างภาพเองด้วยมือสักครั้งให้ผ่าน แล้วกดทำต่อ (ภาพที่ได้แล้วยังอยู่)`)
+      } else {
+        state.nextAt = next.nextAt
+        state.resume = unfinishedClip()
+        state.blockPause = { until: next.nextAt, title: state.resume?.title ?? result.title ?? null }
+        say(`Flow บล็อกชั่วคราว — พัก ${BLOCK_PAUSE_MS / 3_600_000} ชม. แล้วทำ${state.resume ? ` "${state.resume.title}" ต่อจากที่ค้าง` : 'คลิปถัดไป'} เวลา ${fmt(next.nextAt)}`)
+      }
+    } else if (!result.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(result.error ?? '')) {
       state.active = false
       state.nextAt = null
       say('หยุด — บัญชี Flow ติดลิมิตครบแล้วหรือยืนยันบัญชีใหม่ไม่ได้ รอโควต้าคืนแล้วกดทำต่อ (หรือตั้งเวลาทำต่อ) ระบบทำคลิปเดิมต่อจากที่ค้าง')
@@ -348,6 +381,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
   }
 
   function launch(now = Date.now()) {
+    state.blockPause = null
     const config = loadConfig()
     if (clipSettings(config).enabled && !hasKey('KIE_API_KEY')) {
       state.nextAt = now + 10 * 60_000
