@@ -132,7 +132,7 @@ const result = await generateWithFailover({
     if (p.stage === 'busy') {
       const min = Math.max(0, Math.ceil((p.retryAt - Date.now()) / 60_000))
       return process.stdout.write(`
-  Flow คิวเต็ม (high demand) — รออีก ~${min} นาทีแล้วสั่งใหม่ · ได้ ${p.done}/${p.total} ใบ   `)
+  Flow ${p.reason === 'failed' ? 'ตอบว่าเกิดข้อผิดพลาด' : 'คิวเต็ม (high demand)'} — รออีก ~${min} นาทีแล้วสั่งใหม่ · ได้ ${p.done}/${p.total} ใบ   `)
     }
     if (p.stage === 'retry') {
       const f = p.failed ?? {}

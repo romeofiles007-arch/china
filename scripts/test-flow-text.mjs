@@ -273,12 +273,18 @@ test('ตัวสั่ง Flow ใช้ตัวแยกนี้: busy → 
   const agent = src('content-flow-agent.js')
   assert.match(agent, /agentFailureKind\(failure\)/)
   assert.match(agent, /FLOW_BUSY:/)
-  // การ์ดคำตอบเก่าที่ค้างบนหน้า ห้ามนับเป็นความล้มเหลวของ prompt ใหม่
-  assert.match(agent, /const stale = new Set\(\$\$\('flow-agent-response-header'\)\)/)
+  // ผิดพลาดไม่บอกสาเหตุก็รอเว้นช่วงเหมือนคิวเต็ม — ไม่ส่งซ้ำถี่ทุก 5–10 วิ และไม่หยุดทั้งชุดตั้งแต่ครั้งแรก
+  assert.ok(!agent.includes('await sleep(5000 * round)'), 'ห้ามส่งซ้ำถี่')
+  assert.match(agent, /if \(kind === 'busy' \|\| kind === 'failed'\)/)
+  assert.match(agent, /if \(await busyPause\(error\.kind\)\) continue/)
+  // รอครบแล้วยังผิดพลาด → FLOW_BLOCKED (หยุดทั้งชุดเหมือนเดิม)
+  assert.match(agent, /FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent มา/)
+  // หน้าผลิตบอกว่ากำลังรอ ไม่ใช่ดูเหมือนค้าง
+  assert.match(src('../pipeline/5_images.mjs'), /p\.reason === 'failed' \? 'ตอบว่าเกิดข้อผิดพลาด'/)
   // คำสั่งต่อ (สั่งช็อตที่ขาด) ล้ม แต่มีภาพแล้ว → เลิกถาม ส่งภาพที่ได้กลับไป ให้ autopilot สั่งช็อตที่ขาดรอบหน้า
   assert.match(agent, /async function followUp\(/)
-  // การ์ดคำตอบ: ใบล่าสุดที่ไม่ใช่ของเก่า ($$ = ทุกใบบนหน้า · ถ้าเผลอเป็น $ จะได้ใบแรกใบเดียว)
-  assert.ok(agent.includes("const agentCard = (isStale = () => false) => $$('flow-agent-response-header').filter((c) => visible(c) && !isStale(c)).at(-1)"))
+  // การ์ดคำตอบ: ใบล่าสุดบนหน้า ($$ = ทุกใบ · ถ้าเผลอเป็น $ จะได้ใบแรกใบเดียว)
+  assert.ok(agent.includes("const agentCard = () => $$('flow-agent-response-header').filter(visible).at(-1) ?? null"))
   assert.ok(!/\n\s+await sendPrompt\((goInstruction|renameInstruction|continueInstruction)/.test(agent), 'คำสั่งต่อทุกจุดต้องผ่าน followUp')
 })
 

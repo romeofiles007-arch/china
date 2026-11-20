@@ -537,7 +537,7 @@ async function sendPrompt(prompt, attachments) {
   // ส่งแล้วต้องเห็นว่า Flow รับงานจริง ไม่ใช่แค่ช่องพิมพ์ว่าง — ว่างเพราะถูกปฏิเสธก็ว่างเหมือนกัน
   let failure = ''
   let kind = ''
-  for (let round = 1; round <= 3; round++) {
+  {
     let pasted = false
     for (let attempt = 0; attempt < 3 && !pasted; attempt++) {
       pasted = await pasteText()
@@ -546,42 +546,38 @@ async function sendPrompt(prompt, attachments) {
     if (!pasted) throw new Error('วาง prompt ลงช่องพิมพ์ของ Flow ไม่ได้')
     await waitFor(() => (SEL.send() && !SEL.send().disabled ? SEL.send() : null), { label: 'ปุ่มส่งพร้อมใช้งาน' })
     await chrome.storage.local.set({ [FLOW_LAST_PROMPT_KEY]: Date.now() })
-    // การ์ดคำตอบที่อยู่บนหน้าก่อนส่ง (เช่นข้อผิดพลาดของรอบก่อน) ไม่ใช่คำตอบของ prompt นี้ — จำข้อความไว้ ถ้าไม่เปลี่ยนก็ไม่นับ
-    const stale = new Set($$('flow-agent-response-header'))
-    const staleText = new Map([...stale].map((c) => [c, text(c)]))
-    const isStale = (c) => stale.has(c) && staleText.get(c) === text(c)
     await trustedEnter(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), prompt)
-    await waitFor(() => agentBusy() || agentFailed(isStale) || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
+    await waitFor(() => agentBusy() || agentFailed() || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
     // รอให้การ์ดคำตอบนิ่งก่อนตัดสิน — Flow ขึ้น "เกิดข้อผิดพลาด" ภายในไม่กี่วินาทีเมื่อไม่รับงาน
-    const failed = await waitFor(() => agentFailed(isStale), { timeout: 12_000, interval: 500, label: 'คำตอบของ Agent' }).catch(() => null)
+    const failed = await waitFor(agentFailed, { timeout: 12_000, interval: 500, label: 'คำตอบของ Agent' }).catch(() => null)
     if (!failed) return
     failure = [labelText(failed), pageAlerts()].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim().slice(0, 220)
     kind = agentFailureKind(failure)
     // Flow กันบอต — ลองใหม่กี่ครั้งก็เหมือนเดิม และคลิปถัดไปก็เจอเหมือนกัน หยุดทั้งชุดดีกว่าไล่ทำต่อให้พังหมด
-    // Flow คิวเต็ม — สั่งซ้ำทันทีก็โดนอีก ให้คนเรียกรอเป็นนาที (BUSY_WAITS_MS) แล้วค่อยสั่งใหม่
-    if (kind === 'blocked' || kind === 'busy') break
-    await sleep(5000 * round)
+    // Flow คิวเต็ม / ผิดพลาดไม่บอกสาเหตุ — ส่งซ้ำทันทีก็โดนอีก และส่งถี่ยิ่งดูเป็นบอต
+    // ให้คนเรียกรอเป็นนาที (BUSY_WAITS_MS) แล้วค่อยส่งใหม่ (เจอจริง 20 พ.ย. 2026: Flow คนใช้เยอะทั้งช่วงเช้า)
   }
-  if (kind === 'busy') throw Object.assign(new Error(`FLOW_BUSY: Flow คิวเต็ม (คนใช้เยอะ) — "${failure}"`), { kind })
-  const blocked = kind === 'blocked'
+  if (kind === 'busy' || kind === 'failed') {
+    throw Object.assign(new Error(`FLOW_BUSY: Flow ${kind === 'busy' ? 'คิวเต็ม (คนใช้เยอะ)' : 'ตอบว่าเกิดข้อผิดพลาด'} — "${failure}"`), { kind })
+  }
   throw Object.assign(new Error(
     `FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent — "${failure}"` +
-    (blocked
+    (kind === 'blocked'
       ? ' · Flow มองว่าการใช้งานผิดปกติ (มันเตือนเรื่องส่วนขยายที่แก้หน้าเว็บด้วย) หยุดสั่งงานอัตโนมัติสักพัก แล้วเปิดหน้า Flow สั่งสร้างภาพเองด้วยมือสักครั้งให้ผ่านก่อน ค่อยเริ่มผลิตใหม่'
       : ' · ลองส่งใหม่ครบ 3 ครั้งแล้วยังไม่ผ่าน เปิดหน้า Flow ดูว่ามีอะไรค้างอยู่')
   ), { kind: kind || 'failed' })
 }
 
 const agentBusy = () => !!byAria(L.stop).find(visible)
-/** การ์ดคำตอบของ Agent บนหน้าโปรเจกต์ (ไม่ใช่แผงข้าง) — ใบล่าสุดที่ไม่ใช่ของเก่า (isStale) */
-const agentCard = (isStale = () => false) => $$('flow-agent-response-header').filter((c) => visible(c) && !isStale(c)).at(-1) ?? null
+/** การ์ดคำตอบของ Agent บนหน้าโปรเจกต์ (ไม่ใช่แผงข้าง) — มีหลายใบให้ดูใบล่าสุด */
+const agentCard = () => $$('flow-agent-response-header').filter(visible).at(-1) ?? null
 /**
  * Flow ตอบกลับทันทีว่ารับงานไม่ได้ — ช่องพิมพ์ว่างเหมือนส่งสำเร็จ แต่ไม่มีงานเดินสักอย่าง
  * ต้องมีทั้งข้อความผิดพลาดและปุ่ม "ลองอีกครั้ง" ถึงนับ ไม่งั้นคำตอบปกติที่บังเอิญมีคำว่าผิดพลาดจะโดนจับผิด
  * ไม่จับตรงนี้ = ไปรอภาพที่ไม่มีวันมาอีกสิบกว่านาที แล้วรายงานผิดเรื่อง (เจอจริง 20 พ.ย. 2026)
  */
-const agentFailed = (isStale) => {
-  const card = agentCard(isStale)
+const agentFailed = () => {
+  const card = agentCard()
   if (!card || !L.agentFailed.test(text(card))) return null
   return $$('button', card).some((b) => visible(b) && L.tryAgain.test(text(b))) ? card : null
 }
@@ -1056,25 +1052,33 @@ async function runImageJob(job) {
     let busyWaits = 0
     let busyWaited = 0
     /** Flow คิวเต็ม → รอเว้นช่วงยาวขึ้นเรื่อยๆ (heartbeat ระหว่างรอ) · คืน false เมื่อรอรวมเกิน BUSY_MAX_MS */
-    async function busyPause() {
+    async function busyPause(reason = 'busy') {
       const wait = BUSY_WAITS_MS[Math.min(busyWaits++, BUSY_WAITS_MS.length - 1)]
       if (busyWaited + wait > BUSY_MAX_MS) return false
       busyWaited += wait
-      console.warn(`[cartoon-auto] Flow คิวเต็ม (high demand) — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
+      console.warn(`[cartoon-auto] Flow ${reason === 'failed' ? 'ตอบว่าเกิดข้อผิดพลาด' : 'คิวเต็ม (high demand)'} — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
       for (const until = Date.now() + wait; Date.now() < until; ) {
-        await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
+        await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', reason, retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
         await sleep(20_000)
       }
       if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
       return true
     }
-    /** ส่ง prompt · Flow ตอบว่าคิวเต็ม → รอแล้วส่งใหม่ (ไม่ใช่ถูกบล็อก ห้ามทิ้งงาน) */
+    /**
+     * ส่ง prompt · Flow คิวเต็ม / ผิดพลาดไม่บอกสาเหตุ → รอ 2 → 4 → 8 → 15 นาทีแล้วส่งใหม่ (ไม่ใช่ถูกบล็อก ห้ามทิ้งงาน)
+     * รอครบแล้วยังผิดพลาดไม่บอกสาเหตุ = Flow ไม่รับคำสั่งจริง → FLOW_BLOCKED (ผลิตต่อเนื่องหยุดทั้งชุด)
+     */
     async function sendWhenFree(p, files) {
       for (;;) {
         try {
           return await sendPrompt(p, files)
         } catch (error) {
-          if (error.kind !== 'busy' || !(await busyPause())) throw error
+          if (!['busy', 'failed'].includes(error.kind)) throw error
+          if (await busyPause(error.kind)) continue
+          if (error.kind === 'failed') {
+            throw Object.assign(new Error(`FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent มา ${Math.round(busyWaited / 60_000)} นาทีแล้ว — ${error.message.replace(/^FLOW_BUSY:\s*/, '')} · เปิดหน้า Flow ดูว่ามีอะไรค้างอยู่`), { kind: 'failed' })
+          }
+          throw error
         }
       }
     }
