@@ -20,6 +20,7 @@ import { riddleShot, riddleBriefLines, hasRiddleImage, RIDDLE_NAME } from './lib
 import { probeSize } from './lib/ffmpeg.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { generateWithFailover } from './lib/flow-failover.mjs'
+import { neutralizePaper } from './lib/paper-tone.mjs'
 
 const slug = process.argv[2]
 if (!slug) {
@@ -92,7 +93,7 @@ const projectFile = join(imagesDir, '_flow_project.json')
 const savedProject = !process.argv.includes('--new-project') && existsSync(projectFile) ? JSON.parse(readFileSync(projectFile, 'utf8')) : null
 if (savedProject?.url) console.log(`ใช้ project เดิมใน Flow: ${savedProject.url}`)
 
-await ensureProfile(slug, { title }) // หมวด + ภาพอ้างอิงบุคคล (ทำครั้งเดียว)
+const profile = await ensureProfile(slug, { title }) // หมวด + ภาพอ้างอิงบุคคล (ทำครั้งเดียว)
 await requireBridge()
 console.log(`ส่ง ${coverOnly ? 'ภาพปก' : `${shots.length} ช็อต`}ให้ Google Flow — เปิดดูเบราว์เซอร์ได้ ห้ามปิดแท็บระหว่างรอ`)
 if (!coverOnly) console.log('งาน batch ขนาดนี้ปกติใช้เวลา 10-40 นาที')
@@ -149,6 +150,19 @@ if (result.meta && result.meta.generated !== result.meta.expected) {
 }
 
 const { images } = collectImages(imagesDir)
+// ลายเส้นจีนโบราณ: Flow ชอบวาดบนกระดาษเหลือง แม้ prompt ห้ามแล้ว → ปรับพื้นกระดาษเป็นขาวกลาง (เก็บต้นฉบับใน _original/)
+if (profile?.artStyle === 'inkwash') {
+  let fixed = 0
+  for (const file of [...images.map((i) => i.file), join(imagesDir, COVER_NAME)]) {
+    if (!existsSync(file)) continue
+    try {
+      if (await neutralizePaper(file)) fixed++
+    } catch (err) {
+      console.warn(`ปรับสีพื้นภาพ ${file} ไม่ได้: ${err.message}`)
+    }
+  }
+  if (fixed) console.log(`ปรับพื้นกระดาษเหลืองเป็นขาว ${fixed} ภาพ (ต้นฉบับอยู่ใน 05_images/_original/)`)
+}
 const got = new Set(images.map((i) => i.name))
 if (hasCover(slug)) got.add(COVER_NAME)
 if (hasRiddleImage(slug)) got.add(RIDDLE_NAME)

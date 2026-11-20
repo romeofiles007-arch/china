@@ -211,7 +211,7 @@ export const NARRATIONS = {
 /**
  * ลายเส้นของภาพ (ตั้งค่าคลิป → "ลายเส้น") — random = สุ่มต่อคลิป บันทึกไว้ใน profile
  *   doodle  — การ์ตูน 2D doodle ตาม VISUAL STYLE DNA ของ Blueprint
- *   inkwash — ลายเส้นจีนโบราณ (หมึกจีนลงสี) โทนเย็น ไม่ติดเหลือง/ซีเปีย (ใช้กับเรื่องสามก๊ก/ปราชญ์ได้ดี)
+ *   inkwash — ลายเส้นจีนโบราณ (จิตรกรรมกงปี่ บนผ้าไหมขาว) โทนเย็น ไม่ติดเหลือง/ซีเปีย (ใช้กับเรื่องสามก๊ก/ปราชญ์ได้ดี)
  *   body / bodyFlow = แบบตัวละครที่ใช้แทน FULL-BODY/SIMPLE MODE (character.mjs)
  * โปรไฟล์คลิปเก่าที่เป็น 'chinese' หรือ 'watercolor' อ่านเป็น inkwash — ดู RETIRED_ART_STYLES
  */
@@ -224,16 +224,19 @@ export const ART_STYLES = {
   doodle: { label: 'การ์ตูน doodle' },
   inkwash: {
     label: 'ลายเส้นจีนโบราณ',
-    rule: `**ลายเส้นของคลิปนี้: ภาพวาดหมึกจีนลงสี — ใช้แทน ART STYLE และ CHARACTERS ใน VISUAL STYLE DNA ของ Blueprint ทั้งคลิป (ห้าม doodle ห้ามตัวก้าง ห้ามการ์ตูนหัวโต)**
-- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Chinese ink-and-color painting — soft brush linework with painterly washes painted edge to edge (full-bleed, no paper border, no white margin, no frame, no hanging scroll), cool calm palette that is easy on the eyes — misty jade-green mountains, soft sky-blue and moonlit blue, pale mist and cool grey-white, with cinnabar red and gold only as small accents (lantern, banner, sash), tones shifting with the mood of each scene; NEVER aged/yellowed rice paper, NEVER sepia, ochre, mustard, amber or overall warm-yellow cast, NEVER an antique parchment or tea-stained look — the paper tone is cool off-white, not yellow, detailed ancient Chinese architecture (curved tile roofs, courtyards, city walls, pavilions), cinematic wide compositions
-- ตัวละครวาดแบบภาพวาดสัดส่วนสมจริง (ไม่ใช่การ์ตูน): ใบหน้ามีรายละเอียด ผ้าฮั่นฝูมีแสงเงาและรอยพลิ้ว · ขุนศึกสวมชุดเกราะแบบจีนโบราณ ปราชญ์สวมชุดคลุมยาวและหมวกผ้า
-- **ห้ามภาพออกโทนเหลือง**: ไม่ใช่กระดาษสาเก่าเหลืองกรัง ไม่ซีเปีย ไม่คราบชา ไม่โทนอำพัน/ส้ม/มัสตาร์ด ไม่ใส่ฟิลเตอร์วินเทจอุ่น — พื้นกระดาษเป็นขาวนวลอมเทาเย็น แสงนวลเย็น (no sepia, no yellowed paper, no warm vintage filter)
-- ทุกช็อตเหมือนภาพจิตรกรรมหนึ่งภาพ: ฉากหลังละเอียด (ภูเขาหมอก ป่าไผ่ แม่น้ำแยงซี ลานวัง ค่ายทหาร ศาลาริมน้ำ) แสงนวลเย็นตา หมอกบาง ใบไผ่/กลีบท้อปลิว
+    // ผู้ใช้ (20 พ.ย. 2026) ส่งภาพตัวอย่างจากคลิปจริง: จิตรกรรมจีนแบบกงปี่ (工笔) — เส้นหมึกคมบาง ลงสีแร่เรียบ ฉากในห้อง/ลานวังละเอียด
+    // "อยากได้แบบนี้แต่ไม่เหลือง" · ข้อห้ามยาวๆ อย่างเดียวไม่พอ (Flow ยังวาดบนกระดาษเหลือง) → บอกพื้นที่อยากได้ให้ชัด
+    // และ 5_images.mjs ปรับพื้นกระดาษที่ยังเหลืองเป็นขาวกลางให้อีกชั้น (pipeline/lib/paper-tone.mjs)
+    rule: `**ลายเส้นของคลิปนี้: จิตรกรรมจีนโบราณแบบกงปี่ (工笔) — ใช้แทน ART STYLE และ CHARACTERS ใน VISUAL STYLE DNA ของ Blueprint ทั้งคลิป (ห้าม doodle ห้ามตัวก้าง ห้ามการ์ตูนหัวโต)**
+- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Chinese gongbi (工笔) court painting — crisp, fine, even ink outlines and flat layered mineral colors (azure, indigo, celadon, jade green, soft lilac, with cinnabar red and gold only as small accents), painted on clean bright white silk with neutral white balance, fresh and newly painted like a color-corrected museum reproduction; painted edge to edge (full-bleed, no paper border, no white margin, no frame, no hanging scroll); detailed ancient Chinese settings — palace rooms with carved rosewood furniture, silk curtains, folding screens, lattice windows, courtyards, curved tile roofs, gates and city walls — elegant composed scenes with clear figures; no aged or yellowed paper, no sepia, no warm vintage filter
+- ตัวละครวาดแบบจิตรกรรมกงปี่สัดส่วนสมจริง (ไม่ใช่การ์ตูน): ใบหน้าละเอียดสงบงาม เส้นผ้าพลิ้วคม ลายผ้าปักละเอียด · ขุนศึกสวมชุดเกราะจีนโบราณ ปราชญ์/ขุนนางสวมชุดคลุมยาวและหมวกตามตำแหน่ง
+- **พื้นภาพเป็นผ้าไหมขาวสะอาด สมดุลแสงขาวเป็นกลาง** — ขาวใสอมเทาเย็นเล็กน้อย ไม่ใช่ครีม ไม่ใช่เหลือง ไม่ใช่สีชา (clean bright white silk, neutral white balance) · โทนรวมเย็นสดใส
+- แสงตามอารมณ์ฉาก: กลางวันนวลใส · กลางคืนแสงจันทร์ฟ้าคราม · แสงโคม/เทียนเป็นจุดอุ่นเล็กๆ เท่านั้น ไม่ให้ทั้งภาพอมส้ม
 - ${FULL_BLEED_RULE}
 - ตัวอักษรบนภาพใช้น้อยที่สุด (ซับไตเติลใส่ตอนตัดต่อ)`,
-    flow: 'ลายเส้น: ภาพวาดหมึกจีนลงสีแบบจิตรกรรมจีนโบราณ ลายเส้นพู่กันนุ่ม ลงสีซึมเต็มเฟรมถึงขอบ (ไม่ใช่ภาพบนกระดาษ ไม่มีขอบขาว ไม่ใช่ภาพม้วนแขวน) โทนเย็นสบายตา (เขียวหยก ฟ้าหมอก ฟ้าจันทร์ ขาวนวลอมเทา) แดงชาด/ทองใช้แค่จุดเล็ก (โคม ธง ลายปัก) ห้ามโทนเหลือง ซีเปีย กระดาษเก่าเหลืองกรัง หรือฟิลเตอร์วินเทจอุ่น (no sepia, no yellowed paper, cool off-white paper tone) ฉากหลังละเอียดแบบจีนโบราณ ตัวละครสัดส่วนสมจริงแบบภาพวาด — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
-    body: '- แบบตัวละคร: ภาพวาดหมึกจีนลงสีสัดส่วนสมจริง (ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง ไม่ใช่หัวโต) ตามลายเส้นหมึกจีนด้านล่าง · เขียนแบบนี้ใน Character Bible ด้วย',
-    bodyFlow: 'ตัวละครทุกตัววาดแบบภาพวาดหมึกจีนลงสีสัดส่วนสมจริง ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง',
+    flow: 'ลายเส้น: จิตรกรรมจีนโบราณแบบกงปี่ (gongbi 工笔) เส้นหมึกคมบางสม่ำเสมอ ลงสีแร่เรียบเป็นชั้น (ฟ้าคราม คราม เขียวหยก เขียวไข่กา ม่วงอ่อน · แดงชาด/ทองแค่จุดเล็ก) พื้นเป็นผ้าไหมขาวสะอาด สมดุลแสงขาวเป็นกลาง (clean bright white silk, neutral white balance) สดใหม่เหมือนภาพพิมพ์ซ้ำที่แก้สีแล้ว — ไม่ใช่ครีม ไม่เหลือง ไม่ซีเปีย ไม่กระดาษเก่า ลงสีเต็มเฟรมถึงขอบ (ไม่ใช่ภาพบนกระดาษ ไม่มีขอบขาว ไม่ใช่ภาพม้วนแขวน) ฉากจีนโบราณละเอียด (ห้องในวัง เครื่องเรือนไม้แกะสลัก ม่านไหม ฉากกั้น หน้าต่างฉลุ ลานวัง ประตูเมือง) ตัวละครสัดส่วนสมจริงแบบจิตรกรรม ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
+    body: '- แบบตัวละคร: จิตรกรรมจีนแบบกงปี่สัดส่วนสมจริง (ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง ไม่ใช่หัวโต) ตามลายเส้นจีนโบราณด้านล่าง · เขียนแบบนี้ใน Character Bible ด้วย',
+    bodyFlow: 'ตัวละครทุกตัววาดแบบจิตรกรรมจีนกงปี่สัดส่วนสมจริง ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง',
   },
   random: { label: '🎲 สุ่ม' },
 }
