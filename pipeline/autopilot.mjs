@@ -21,7 +21,7 @@ import { join, dirname, basename } from 'node:path'
 import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
 import { bgmFor, bgmMode, bgmDb } from './lib/bgm.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
-import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver } from './lib/prompts.mjs'
+import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver, endsWithLesson } from './lib/prompts.mjs'
 import { saveScript, loadScript, scriptProblem } from './lib/stage2.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from './lib/shotlist.mjs'
 import { collectImages } from './lib/shotfile.mjs'
@@ -340,6 +340,12 @@ async function scriptDepartment() {
     if (opensWithHaveYouEver(text) && attempt < 3) {
       console.warn(`   บทขึ้นต้นด้วย "คุณเคย…ไหม" ("${text.trim().split(/\r?\n/)[0].slice(0, 40)}") — ขอเขียนใหม่ให้เข้าเรื่องเลย`)
       feedback = '\n\n⚠️ บทรอบก่อนขึ้นต้นด้วยคำถาม "คุณเคย…ไหม" ซึ่งห้ามใช้ — เขียนบทใหม่ทั้งหมด บรรทัดแรกเข้าเรื่องทันทีด้วยเหตุการณ์หรือภาพที่กำลังเกิดขึ้น และห้ามใช้รูปประโยค "คุณเคย…ไหม/เคยไหม" ตลอดทั้งบท'
+      continue
+    }
+    // ผู้ใช้ (20 พ.ย. 2026): เล่าอย่างเดียว ไม่ทิ้งท้ายด้วยข้อคิด — ปิดด้วยประโยคเฉียบคมประโยคเดียว · รอบสุดท้ายยอมรับ ไม่ให้งานผลิตค้าง
+    if (endsWithLesson(text) && attempt < 3) {
+      console.warn('   บทปิดท้ายด้วยข้อคิด/บทเรียน — ขอเขียนใหม่ให้เล่าอย่างเดียว')
+      feedback = '\n\n⚠️ บทรอบก่อนปิดท้ายด้วยการถอดข้อคิด/สรุปบทเรียน ซึ่งห้ามทำ — เขียนบทใหม่ทั้งหมด เล่าเรื่องอย่างเดียวจนจบ แล้วปิดด้วยประโยคเฉียบคมสั้นๆ เพียง 1 ประโยค ห้ามมีคำว่า ข้อคิด บทเรียน "เรื่องนี้สอนเรา" "นำไปใช้" หรือโยงมาชีวิตคนยุคนี้'
       continue
     }
     // ChatGPT ถามกลับแทนที่จะเขียนบท เช่น "ต้องการให้ใช้บุคคลใดเป็นตัวเอกครับ?" → ขอใหม่
