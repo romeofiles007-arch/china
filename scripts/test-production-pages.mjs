@@ -23,6 +23,16 @@ test('production retains exhausted-account errors when autopilot prints a recove
   assert.equal(productionError(['ordinary failure']), 'ordinary failure')
 })
 
+// 20 พ.ย. 2026: Flow ปฏิเสธคำสั่งของ Agent ทุกคลิป ("เกิดข้อผิดพลาด" / เตือนเรื่องการใช้งานผิดปกติ)
+// ถ้าไม่ถือเป็นเหตุหยุดทั้งชุด ผลิตต่อเนื่องจะไล่ทำคลิปถัดไปแล้วพังเหมือนกันทุกคลิป
+test('Flow ปฏิเสธคำสั่ง (FLOW_BLOCKED) ต้องหยุดทั้งชุด ไม่ใช่ข้ามไปคลิปถัดไป', () => {
+  const lines = [
+    '[extension 1.0.61] FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent — "เกิดข้อผิดพลาด โปรดลองอีกครั้ง"',
+    'กดทำคลิปอัตโนมัติอีกครั้งด้วยหัวข้อเดิม',
+  ]
+  assert.match(productionError(lines), /FLOW_BLOCKED/)
+})
+
 test('แบ่งเพจ 3/2 → สลับกัน ครบ 5 คลิป (เพจ 1 = 3 · เพจ 2 = 2)', () => {
   const seq = pageSequence({ 'fb:a': 3, 'fb:b': 2 }, ['fb:a', 'fb:b'])
   assert.deepEqual(seq, ['fb:a', 'fb:b', 'fb:a', 'fb:b', 'fb:a'])

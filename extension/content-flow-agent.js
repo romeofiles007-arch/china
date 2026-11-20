@@ -143,6 +143,11 @@ const L = {
   creditsPane: /Generating will use|การสร้างจะใช้/i,
   credits: /(?:Generating will use|การสร้างจะใช้)\s*(\d+)\s*(?:credits?|เครดิต)/i,
   // พ.ย. 2026 ข้อความสั้นลงเป็น "ค่าเริ่มต้นของรูปภาพ / Image defaults" (ของเดิมไว้เผื่อหน้าเก่า)
+  // Flow ตอบกลับว่ารับงานไม่ได้ — การ์ดคำตอบขึ้น "เกิดข้อผิดพลาด โปรดลองอีกครั้ง" พร้อมปุ่มลองอีกครั้ง
+  agentFailed: /Something went wrong|เกิดข้อผิดพลาด/i,
+  tryAgain: /Try again|ลองอีกครั้ง/i,
+  // Flow กันบอต: "We noticed some unusual activity… browser extensions that modify the page may cause issues"
+  unusualActivity: /unusual activity|กิจกรรมที่ผิดปกติ|การใช้งานที่ผิดปกติ|ผิดปกติ/i,
   imageDefault: /Image (generation )?default|ค่าเริ่มต้น(สำหรับการสร้าง|ของ)รูปภาพ/,
   videoDefault: /Video (generation )?default|ค่าเริ่มต้น(ของการสร้าง|ของ)วิดีโอ/,
   never: /^(Never|ไม่เลย)/,
@@ -529,19 +534,52 @@ async function sendPrompt(prompt, attachments) {
     }
     return text(SEL.editor()) === String(prompt).replace(/\s+/g, ' ').trim()
   }
-  let pasted = false
-  for (let attempt = 0; attempt < 3 && !pasted; attempt++) {
-    pasted = await pasteText()
-    if (!pasted) await sleep(1500)
+  // ส่งแล้วต้องเห็นว่า Flow รับงานจริง ไม่ใช่แค่ช่องพิมพ์ว่าง — ว่างเพราะถูกปฏิเสธก็ว่างเหมือนกัน
+  let failure = ''
+  for (let round = 1; round <= 3; round++) {
+    let pasted = false
+    for (let attempt = 0; attempt < 3 && !pasted; attempt++) {
+      pasted = await pasteText()
+      if (!pasted) await sleep(1500)
+    }
+    if (!pasted) throw new Error('วาง prompt ลงช่องพิมพ์ของ Flow ไม่ได้')
+    await waitFor(() => (SEL.send() && !SEL.send().disabled ? SEL.send() : null), { label: 'ปุ่มส่งพร้อมใช้งาน' })
+    await chrome.storage.local.set({ [FLOW_LAST_PROMPT_KEY]: Date.now() })
+    await trustedEnter(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), prompt)
+    await waitFor(() => agentBusy() || agentFailed() || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
+    // รอให้การ์ดคำตอบนิ่งก่อนตัดสิน — Flow ขึ้น "เกิดข้อผิดพลาด" ภายในไม่กี่วินาทีเมื่อไม่รับงาน
+    const failed = await waitFor(agentFailed, { timeout: 12_000, interval: 500, label: 'คำตอบของ Agent' }).catch(() => null)
+    if (!failed) return
+    failure = [labelText(failed), pageAlerts()].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim().slice(0, 220)
+    // Flow กันบอต — ลองใหม่กี่ครั้งก็เหมือนเดิม และคลิปถัดไปก็เจอเหมือนกัน หยุดทั้งชุดดีกว่าไล่ทำต่อให้พังหมด
+    if (L.unusualActivity.test(failure)) break
+    await sleep(5000 * round)
   }
-  if (!pasted) throw new Error('วาง prompt ลงช่องพิมพ์ของ Flow ไม่ได้')
-  await waitFor(() => (SEL.send() && !SEL.send().disabled ? SEL.send() : null), { label: 'ปุ่มส่งพร้อมใช้งาน' })
-  await chrome.storage.local.set({ [FLOW_LAST_PROMPT_KEY]: Date.now() })
-  await trustedEnter(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), prompt)
-  await waitFor(() => agentBusy() || !text(SEL.editor()), { timeout: 15_000, label: 'Flow รับ prompt' })
+  const blocked = L.unusualActivity.test(failure)
+  throw new Error(
+    `FLOW_BLOCKED: Google Flow ไม่รับคำสั่งของ Agent — "${failure}"` +
+    (blocked
+      ? ' · Flow มองว่าการใช้งานผิดปกติ (มันเตือนเรื่องส่วนขยายที่แก้หน้าเว็บด้วย) หยุดสั่งงานอัตโนมัติสักพัก แล้วเปิดหน้า Flow สั่งสร้างภาพเองด้วยมือสักครั้งให้ผ่านก่อน ค่อยเริ่มผลิตใหม่'
+      : ' · ลองส่งใหม่ครบ 3 ครั้งแล้วยังไม่ผ่าน เปิดหน้า Flow ดูว่ามีอะไรค้างอยู่')
+  )
 }
 
 const agentBusy = () => !!byAria(L.stop).find(visible)
+/** การ์ดคำตอบของ Agent บนหน้าโปรเจกต์ (ไม่ใช่แผงข้าง) */
+const agentCard = () => $$('flow-agent-response-header').find(visible) ?? null
+/**
+ * Flow ตอบกลับทันทีว่ารับงานไม่ได้ — ช่องพิมพ์ว่างเหมือนส่งสำเร็จ แต่ไม่มีงานเดินสักอย่าง
+ * ต้องมีทั้งข้อความผิดพลาดและปุ่ม "ลองอีกครั้ง" ถึงนับ ไม่งั้นคำตอบปกติที่บังเอิญมีคำว่าผิดพลาดจะโดนจับผิด
+ * ไม่จับตรงนี้ = ไปรอภาพที่ไม่มีวันมาอีกสิบกว่านาที แล้วรายงานผิดเรื่อง (เจอจริง 20 พ.ย. 2026)
+ */
+const agentFailed = () => {
+  const card = agentCard()
+  if (!card || !L.agentFailed.test(text(card))) return null
+  return $$('button', card).some((b) => visible(b) && L.tryAgain.test(text(b))) ? card : null
+}
+/** ข้อความเตือนของ Flow ที่ขึ้นบนหน้า (เช่นคำเตือนเรื่องการใช้งานผิดปกติ) */
+const pageAlerts = () =>
+  $$('[role="alert"], mat-snack-bar-container, flow-error-tile').filter(visible).map((el) => text(el)).filter(Boolean).join(' · ')
 
 // ── ภาพใน project ──
 // grid เป็น virtual scroll (แสดงเฉพาะที่อยู่บนจอ) → จำภาพทุกใบที่เคยโผล่ด้วย MutationObserver
