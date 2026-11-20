@@ -53,7 +53,19 @@ const quiet = flag('--quiet')
 const noWait = flag('--no-wait')
 const noDownload = flag('--no-download')
 
-const id = readFileSync(join(DIR, 'extension-id.txt'), 'utf8').trim()
+/**
+ * ID ที่ Chrome ให้ extension แบบ unpacked ที่มี key ใน manifest: sha256(key) 32 ตัวแรก แปลง 0–f เป็น a–p
+ * คำนวณเองทุกครั้ง ไม่เชื่อไฟล์ extension-id.txt อย่างเดียว — 20 พ.ย. 2026 ไฟล์นั้นค้าง ID ของแอปเดิม
+ * ตัวติดตั้งจึงลงทะเบียน native host ให้ ID ผิด Chrome ตอบ "forbidden" แผงข้างเชื่อมโปรแกรมไม่ได้
+ */
+function extensionIdFromKey(manifestFile, fallbackFile) {
+  try {
+    const key = JSON.parse(readFileSync(manifestFile, 'utf8')).key
+    if (key) return [...createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('')
+  } catch {}
+  return readFileSync(fallbackFile, 'utf8').trim()
+}
+const id = extensionIdFromKey(join(EXTENSION_DIR, 'manifest.json'), join(DIR, 'extension-id.txt'))
 
 // ── ผลแต่ละขั้น → สรุปตอนจบ ──
 const results = [] // { label, ok, detail, fix? }
