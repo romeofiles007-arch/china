@@ -3718,6 +3718,55 @@ $('haltButton').addEventListener('click', async () => {
 })
 haltCall()
 
+/**
+ * เครดิตคงเหลือ — ผู้ใช้ 21 พ.ย. 2026: "ให้มีสถานะเครดิตทุกอย่างแสดงค้างไว้ด้านบน เช่น ElevenLabs และ Kie"
+ * โปรแกรมในเครื่องจำค่าไว้ 5 นาที แผงถามทุก 1 นาที · กด ↻ อ่านใหม่ทันที · บริการที่ไม่มี key ไม่แสดง
+ */
+let credits = null
+const creditNum = (n) => Number(n).toLocaleString('th-TH')
+function renderCredits() {
+  const list = $('creditList')
+  const services = credits?.services ?? []
+  $('creditBar').hidden = !services.length
+  list.replaceChildren(...services.map((s) => {
+    const li = document.createElement('li')
+    li.className = 'creditItem'
+    const name = Object.assign(document.createElement('span'), { textContent: s.label })
+    const value = document.createElement('b')
+    const note = document.createElement('small')
+    if (s.error) {
+      li.dataset.level = 'error'
+      value.textContent = 'อ่านไม่ได้'
+      li.title = s.error
+      note.textContent = s.short ?? (s.error.length > 40 ? '' : s.error)
+    } else {
+      const ratio = s.limit ? s.remaining / s.limit : null
+      li.dataset.level = s.remaining <= 0 ? 'out' : ratio != null && ratio < 0.15 ? 'low' : 'ok'
+      value.textContent = s.limit ? `${creditNum(s.remaining)} / ${creditNum(s.limit)}` : creditNum(s.remaining)
+      const reset = s.resetAt ? `รีเซ็ต ${new Date(s.resetAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}` : ''
+      note.textContent = [s.remaining <= 0 ? 'หมดแล้ว' : 'เหลือ', reset].filter(Boolean).join(' · ')
+      li.title = `${s.label}: เหลือ ${creditNum(s.remaining)} ${s.unit ?? ''}${s.limit ? ` จาก ${creditNum(s.limit)} (ใช้ไป ${creditNum(s.used)})` : ''}${reset ? ` · ${reset}` : ''}${s.tier ? ` · แพ็กเกจ ${s.tier}` : ''}`
+    }
+    li.append(name, value, note)
+    return li
+  }))
+}
+async function creditsCall(refresh = false) {
+  try {
+    credits = await api(await localApp(), `/api/credits${refresh ? '?refresh=1' : ''}`)
+  } catch {
+    credits = null // โปรแกรมในเครื่องรุ่นเก่า / ยังไม่เปิด → ซ่อน
+  }
+  renderCredits()
+}
+$('creditRefresh').addEventListener('click', async () => {
+  $('creditRefresh').disabled = true
+  await creditsCall(true)
+  $('creditRefresh').disabled = false
+})
+creditsCall()
+setInterval(() => creditsCall(), 60_000)
+
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
 let prodFilled = false

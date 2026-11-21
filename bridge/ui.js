@@ -24,6 +24,7 @@ import { EDGE_VOICES, GEMINI_VOICES, GEMINI_MODELS, ELEVEN_MODELS, edgePython, s
 import { voxcpmInstalled, voxcpmVoices, synthVoxcpm, voxcpmVoiceFromRaw, setVoxcpmRefText } from '../pipeline/lib/voxcpm.mjs'
 import { hasKey } from '../pipeline/lib/env.mjs'
 import { killStray } from './halt.js'
+import { allCredits } from '../pipeline/lib/credits.mjs'
 import { WRITERS, writerOf } from '../pipeline/lib/gemini_text.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from '../pipeline/lib/shotlist.mjs'
 import { execFileSync } from 'node:child_process'
@@ -787,6 +788,11 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           }
         }
         return json(res, 200, { ...(halt?.view() ?? { halted: false }), run: runner.snapshot()?.status ?? null, production: production.active() }), true
+      }
+
+      // เครดิตคงเหลือ (ElevenLabs, Kie) — แถบบนสุดของแผงข้าง · ?refresh=1 อ่านใหม่ทันที (ปกติจำไว้ 5 นาที)
+      if (req.method === 'GET' && path === '/api/credits') {
+        return json(res, 200, await allCredits({ refresh: url.searchParams.get('refresh') === '1' })), true
       }
 
       if (req.method === 'POST' && path === '/api/run/stop') {

@@ -672,3 +672,22 @@ main .haltButton:disabled { opacity: .7; cursor: progress; }
 .haltBar[data-halted='true'] .haltButton { background: #fff; color: #1b5e20; border-color: #fff; }
 .haltBar[data-halted='true'] .haltButton:hover:not(:disabled) { background: #e8f5e9; }
 @media (max-width: 380px) { .haltBar { flex-wrap: wrap; } main .haltButton { width: 100%; } }
+
+/* ── แถบค้างบนสุด: เครดิตคงเหลือ + หยุดทุกอย่าง + ผลิตครั้งต่อไป ── */
+.topDock { position: sticky; top: calc(var(--agent-sticky-h, 0px) + 8px); z-index: 14; display: grid; gap: 8px; margin: 0 0 12px; }
+.topDock .prodNext { position: static; margin: 0; }
+.topDock .haltBar { box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 12%, transparent); }
+.creditBar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 10%, transparent); }
+.creditList { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.creditItem { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 12px; line-height: 1.4; border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 4%, var(--panel)); }
+.creditItem b { font-weight: 800; font-variant-numeric: tabular-nums; }
+.creditItem small { opacity: .72; font-size: 11px; }
+.creditItem[data-level='low'] { border-color: #d98a1c; background: color-mix(in srgb, #f6b443 18%, var(--panel)); }
+.creditItem[data-level='out'] { border-color: #c62828; background: color-mix(in srgb, #e53935 18%, var(--panel)); }
+.creditItem[data-level='error'] { border-style: dashed; opacity: .9; }
+main .creditRefresh { flex: none; width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 15px; cursor: pointer; }
+main .creditRefresh:disabled { opacity: .5; cursor: progress; }
+/* ปกติ: แถบหยุดแบบย่อ (ไม่กินที่) · หยุดอยู่: แสดงคำอธิบายเต็ม */
+.haltBar[data-halted='false'] { padding: 6px 8px 6px 12px; }
+.haltBar[data-halted='false'] #haltSub { display: none; }
+.haltBar[data-halted='false'] .haltButton { min-height: 34px; padding: 5px 12px; font-size: 13px; }

@@ -57,6 +57,10 @@ window.fetch = async (input, init) => {
     if (url.pathname === '/api/halt' && 'on' in sent) window.fixtureHalt = !!sent.on
     const haltOn = window.fixtureHalt ?? params.get('halt') === 'on'
     const payload = url.pathname === '/api/halt' ? {halted: haltOn, at: haltOn ? Date.now() - 600000 : null, run: null, production: false}
+      : url.pathname === '/api/credits' ? {at: Date.now(), services: [
+        params.get('eleven') === 'error' ? {id:'elevenlabs', label:'ElevenLabs', unit:'เครดิต', error:'key นี้ไม่มีสิทธิ์อ่านเครดิต — สร้าง key ใหม่ที่เปิด "User: Read" ด้วย'}
+          : {id:'elevenlabs', label:'ElevenLabs', unit:'เครดิต', used: 27450, limit: 30000, remaining: 2550, tier:'starter', resetAt: Date.now() + 26 * 86400000},
+        {id:'kie', label:'Kie', unit:'เครดิต', remaining: 1240}]}
       : url.pathname === '/api/gemini-key' ? {hasKey:true}
       : url.pathname === '/api/videos' ? {videos:[]}
       : url.pathname === '/api/projects' ? {projects:[]}
