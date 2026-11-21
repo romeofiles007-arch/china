@@ -363,7 +363,7 @@ const server = createServer(async (req, res) => {
 
 /** มีงานค้างอยู่ไหม: งานของ ChatGPT/Flow ในคิว หรือขั้นของ pipeline กำลังรัน */
 // นับเฉพาะงานของแท็บจริง — งานทดสอบ (agent x / cancel-test / flow-selftest) ที่ค้างไว้เคยขวางไม่ให้ bridge รีสตาร์ทรับโค้ดใหม่
-const REAL_AGENTS = new Set(['chatgpt', 'flow', 'meta', 'tiktok'])
+const REAL_AGENTS = new Set(['chatgpt', 'gemini', 'flow', 'meta', 'tiktok'])
 const liveJob = (j) => REAL_AGENTS.has(j.agent) && (j.status === 'running' || (j.status === 'queued' && Date.now() - j.createdAt < 30 * 60_000))
 const workInProgress = () => ui.busy() || posting.busy() || [...jobs.values()].some(liveJob)
 
@@ -379,7 +379,7 @@ function busyReason() {
   const label = String(job.payload?.label ?? '')
   if (/ตรวจคลิป/.test(label)) return 'AI กำลังตรวจคลิปในคิวโพสต์'
   if (/คิดชื่อคลิป/.test(label)) return 'ChatGPT กำลังเขียนชื่อคลิปและคำบรรยาย'
-  return job.agent === 'tiktok' ? 'TikTok กำลังทำงานอยู่' : job.agent === 'flow' ? 'Google Flow กำลังทำงานอยู่' : job.agent === 'meta' ? 'Meta AI กำลังทำงานอยู่' : 'ChatGPT กำลังทำงานอยู่'
+  return job.agent === 'tiktok' ? 'TikTok กำลังทำงานอยู่' : job.agent === 'flow' ? 'Google Flow กำลังทำงานอยู่' : job.agent === 'meta' ? 'Meta AI กำลังทำงานอยู่' : job.agent === 'gemini' ? 'Gemini กำลังเขียนหัวข้อหรือบท' : 'ChatGPT กำลังทำงานอยู่'
 }
 
 // โค้ดของโปรแกรมเปลี่ยน → รีสตาร์ทตัวเองเมื่อว่าง (เฉพาะตัวจริงที่ port 8786 — ตัวทดสอบไม่ต้อง)

@@ -120,6 +120,22 @@ export function geminiChat({ model: preferred = '', log = console.log } = {}) {
   }
 }
 
-/** ผู้เขียนบทที่เลือกไว้ — 'gemini' | 'chatgpt' (ค่าเริ่มต้น) */
-export const writerOf = (config) => (config?.script?.writer === 'gemini' ? 'gemini' : 'chatgpt')
-export const WRITERS = { chatgpt: { label: 'ChatGPT' }, gemini: { label: 'Gemini' } }
+/**
+ * ผู้เขียนบทที่เลือกไว้ — 'chatgpt' (ค่าเริ่มต้น) | 'gemini-web' แท็บ gemini.google.com | 'gemini' Gemini API
+ * ลำดับใน WRITERS = ลำดับการ์ดในแผงข้าง
+ */
+export const WRITERS = { chatgpt: { label: 'ChatGPT' }, 'gemini-web': { label: 'Gemini เว็บ' }, gemini: { label: 'Gemini API' } }
+export const writerOf = (config) => (WRITERS[config?.script?.writer] ? config.script.writer : 'chatgpt')
+
+/**
+ * ตัดส่วนกำกับภาพของ Blueprint (OUTPUT 4 ภาพปก + OUTPUT 5 ภาพ ~11,000 ตัวอักษร) ออกจาก prompt ที่ส่งให้ Gemini เว็บ
+ * ช่องพิมพ์ของ Gemini เว็บรับได้ ~32,500 ตัวอักษร (เกินถูกตัดทิ้งเงียบๆ) — prompt บท 33k / หัวข้อ 37k เกินพอดี
+ * ขั้นคิดหัวข้อและเขียนบทไม่ได้ใช้ส่วนภาพ ตัดแล้วเหลือ ~22k / ~26k · หาหัวข้อไม่เจอ = ส่งทั้งก้อนตามเดิม
+ */
+export function trimForWebWriter(prompt) {
+  const text = String(prompt)
+  const start = text.indexOf('### OUTPUT 4 —')
+  const end = text.indexOf('## 4. สูตร Hook')
+  if (start < 0 || end <= start) return text
+  return `${text.slice(0, start)}(ส่วน OUTPUT 4–5 เรื่องภาพปกและภาพประกอบ ตัดออก — ขั้นนี้ไม่ใช้)\n\n---\n\n${text.slice(end)}`
+}

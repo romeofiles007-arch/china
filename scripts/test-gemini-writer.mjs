@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { rankModels, geminiChat, writerOf, WRITERS } from '../pipeline/lib/gemini_text.mjs'
+import { rankModels, geminiChat, writerOf, WRITERS, trimForWebWriter } from '../pipeline/lib/gemini_text.mjs'
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 
@@ -17,11 +17,42 @@ test('เรียงรุ่น: pro ใหม่สุดก่อน · เ�
   assert.deepEqual(ranked, ['gemini-3-pro', 'gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-3-flash', 'gemini-2.5-flash'])
 })
 
-test('ผู้เขียนบท: ค่าเริ่มต้น ChatGPT · เลือก Gemini ได้', () => {
+test('ผู้เขียนบท: ค่าเริ่มต้น ChatGPT · เลือก Gemini เว็บ / Gemini API ได้', () => {
   assert.equal(writerOf({ script: {} }), 'chatgpt')
   assert.equal(writerOf({ script: { writer: 'gemini' } }), 'gemini')
+  assert.equal(writerOf({ script: { writer: 'gemini-web' } }), 'gemini-web')
   assert.equal(writerOf({ script: { writer: 'อื่นๆ' } }), 'chatgpt')
-  assert.deepEqual(Object.keys(WRITERS), ['chatgpt', 'gemini'])
+  assert.deepEqual(Object.keys(WRITERS), ['chatgpt', 'gemini-web', 'gemini'])
+})
+
+// Gemini เว็บรับข้อความได้ ~32,500 ตัวอักษร (เกินถูกตัดเงียบๆ) — ตรวจกับหน้าจริง 21 พ.ย. 2026
+test('Gemini เว็บ: ตัดส่วนกำกับภาพของ Blueprint ออก ให้คำสั่งเขียนบทพอดีช่องพิมพ์', async () => {
+  const { scriptPrompt } = await import('../pipeline/lib/prompts.mjs')
+  const { loadConfig } = await import('../pipeline/lib/config.mjs')
+  const prompt = scriptPrompt(loadConfig(), 'ม่อจื๊อเดินสิบวันสิบคืน', { category: 'sage', mood: 'happy' })
+  const trimmed = trimForWebWriter(prompt)
+  assert.ok(trimmed.length < 30_000, `ยาว ${trimmed.length} ตัวอักษร`)
+  assert.ok(!trimmed.includes('### OUTPUT 5'), 'ส่วนภาพต้องถูกตัด')
+  for (const keep of ['STAGE 2', 'หัวใจของบท', 'ตอนจบของบท', '## 4. สูตร Hook', 'ม่อจื๊อเดินสิบวันสิบคืน']) assert.ok(trimmed.includes(keep), `ต้องเหลือ ${keep}`)
+  assert.equal(trimForWebWriter('ไม่มีหัวข้อ Blueprint'), 'ไม่มีหัวข้อ Blueprint')
+})
+
+test('Gemini เว็บ: ส่วนขยายมีตัวขับ gemini.google.com · bridge นับเป็นงานจริง · autopilot ส่งผ่าน agent gemini', () => {
+  const manifest = JSON.parse(read('extension/manifest.json'))
+  assert.ok(manifest.host_permissions.includes('https://gemini.google.com/*'))
+  assert.ok(manifest.content_scripts.some((c) => c.matches.includes('https://gemini.google.com/*') && c.js.includes('content-gemini.js')))
+  const bg = read('extension/background.js')
+  assert.match(bg, /gemini: \{ match: 'https:\/\/gemini\.google\.com\/app'/)
+  assert.match(bg, /gemini: \['content-common\.js', 'content-gemini\.js'\]/)
+  assert.match(bg, /\(agent === 'chatgpt' \|\| agent === 'gemini'\) && job\.kind === 'prompt'/, 'แชตใหม่ = โหลดหน้าแรกก่อนส่งงาน')
+  assert.match(read('bridge/server.js'), /REAL_AGENTS = new Set\(\['chatgpt', 'gemini'/)
+  const driver = read('extension/content-gemini.js')
+  assert.ok(!/^\s*export\b/m.test(driver), 'content script ไม่ใช่ module — ห้าม export')
+  for (const sel of ['rich-textarea', 'model-response', 'message-content', 'ส่งข้อความ', 'หยุดคำตอบ', 'คัดลอก']) assert.ok(driver.includes(sel), `ตัวขับต้องรู้จัก ${sel}`)
+  const auto = read('pipeline/autopilot.mjs')
+  assert.match(auto, /runJob\(\{ agent: 'gemini', kind: 'prompt'/)
+  assert.match(auto, /trimForWebWriter\(prompt\)/)
+  assert.match(auto, /^function altWriter\(\)/m, 'ต้องเป็น function declaration — ขั้นคิดหัวข้อเรียกก่อนถึงบรรทัดที่ประกาศ')
 })
 
 /** fetch ปลอม — ตอบตามรุ่นที่ถูกเรียก บันทึกทุกคำขอไว้ตรวจ */
@@ -77,7 +108,7 @@ test('key ผิด → error ทันที ไม่ลองรุ่นอ�
 test('autopilot: ผู้เขียนเป็น Gemini ใช้ทั้งคิดหัวข้อและเขียนบท · ล้มแล้วใช้ ChatGPT แทน', () => {
   const src = read('pipeline/autopilot.mjs')
   assert.match(src, /writer\.ask\(/, 'เขียนบทผ่านผู้เขียนที่เลือก')
-  assert.match(src, /topicGemini\.ask\(prompt\)/, 'คิดหัวข้อผ่าน Gemini')
+  assert.match(src, /topicGemini\.ask\(prompt, \{ label:/, 'คิดหัวข้อผ่าน Gemini')
   assert.match(src, /เปลี่ยนไปใช้ ChatGPT สำหรับคลิปนี้/)
   assert.match(src, /restart\(\)/, 'เปลี่ยนผู้เขียนกลางการปรับความยาว → ส่ง prompt เต็มให้ ChatGPT')
 })

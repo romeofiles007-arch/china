@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve, extname, sep } from 'node:path'
 const ROOT = resolve(import.meta.dirname, '..')
+const PORT = Number(process.env.PORT) || 18769 // เปิดหลายตัวพร้อมกันได้ (แต่ละ session ใช้คนละพอร์ต)
 import { elapsed, HANDOFF } from '../extension/agents.js'
 import assert from 'node:assert/strict'
 
@@ -79,7 +80,7 @@ window.fetch = async (input, init) => {
               { at: at(15.2), src: 'run', text: '❌ หยุดที่แผนกทำแอนิเมชัน — ล้มเหลวติดกัน 2 ช็อต' },
             ] }
         })() : {status:null,run:null})
-      : url.pathname === '/api/clip-settings' ? {...writerFixture,orientation:'landscape',subtitles:'none',pause:'natural',motion:'gentle',aiCoverage:params.get('kie')==='on'?'20':'off',kieTier:'cheap',kie:{hasKey:false,label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},options:{writer:[{id:'chatgpt',label:'ChatGPT'},{id:'gemini',label:'Gemini'}],subtitles:[{id:'none',label:'ไม่ใส่'}],pause:[{id:'natural',label:'ปกติ'}],motion:[{id:'gentle',label:'ซูมช้า'}],aiCoverage:[{id:'off',label:'ปิด'},{id:'20',label:'20%'},{id:'60',label:'60%'},{id:'80',label:'80%'},{id:'100',label:'100%'}],kieTier:[{id:'cheap',label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},{id:'mid',label:'พอใช้',name:'Hailuo 2.3',credits:30,detail:'768p · 6 วิ'},{id:'pro',label:'เก่ง',name:'Kling 2.6',credits:55,detail:'คมชัด · 5 วิ'}]}} : {}
+      : url.pathname === '/api/clip-settings' ? {...writerFixture,orientation:'landscape',subtitles:'none',pause:'natural',motion:'gentle',aiCoverage:params.get('kie')==='on'?'20':'off',kieTier:'cheap',kie:{hasKey:false,label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},options:{writer:[{id:'chatgpt',label:'ChatGPT'},{id:'gemini-web',label:'Gemini เว็บ'},{id:'gemini',label:'Gemini API'}],subtitles:[{id:'none',label:'ไม่ใส่'}],pause:[{id:'natural',label:'ปกติ'}],motion:[{id:'gentle',label:'ซูมช้า'}],aiCoverage:[{id:'off',label:'ปิด'},{id:'20',label:'20%'},{id:'60',label:'60%'},{id:'80',label:'80%'},{id:'100',label:'100%'}],kieTier:[{id:'cheap',label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},{id:'mid',label:'พอใช้',name:'Hailuo 2.3',credits:30,detail:'768p · 6 วิ'},{id:'pro',label:'เก่ง',name:'Kling 2.6',credits:55,detail:'คมชัด · 5 วิ'}]}} : {}
     return new Response(JSON.stringify(payload), {headers:{'content-type':'application/json'}})
   }
   return originalFetch(input, init)
@@ -130,7 +131,7 @@ addEventListener('DOMContentLoaded', () => {
 `
 
 createServer((req, res) => {
-  const url = new URL(req.url, 'http://127.0.0.1:18769')
+  const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
   const reply = (type, value) => { res.writeHead(200, {'content-type':type,'cache-control':'no-store'}); res.end(value) }
   if (url.pathname === '/fixture-stub.js') return reply('text/javascript', stub)
   if (url.pathname === '/fixture-agents') {
@@ -163,4 +164,4 @@ createServer((req, res) => {
     if (params.get('motion') === 'reduce') content = content.toString().replaceAll('@media (prefers-reduced-motion: reduce)', '@media all')
   }
   reply(types[extname(file)], content)
-}).listen(18769, '127.0.0.1', () => console.log('ตัวอย่างข้อมูลจำลอง: http://127.0.0.1:18769/?case=mixed&auto=art&theme=light'))
+}).listen(PORT, '127.0.0.1', () => console.log(`ตัวอย่างข้อมูลจำลอง: http://127.0.0.1:${PORT}/?case=mixed&auto=art&theme=light`))

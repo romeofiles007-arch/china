@@ -34,7 +34,7 @@ import { clipSettings, clipTarget, clipScopeLabel, clipsDir, collectClips, scene
 import { kieKey, kieTier, kieBalance } from './lib/kie.mjs'
 import { clipSource, postPrompt, parsePost, savePost, readPost } from './lib/post.mjs'
 import { exportForAutoPost } from './lib/autopost.mjs'
-import { geminiChat, writerOf } from './lib/gemini_text.mjs'
+import { geminiChat, writerOf, trimForWebWriter } from './lib/gemini_text.mjs'
 
 // ── อาร์กิวเมนต์ ──
 const raw = process.argv.slice(2)
@@ -85,8 +85,8 @@ if (autoTopic) {
   console.log('▶ แผนกคิดหัวข้อ')
   console.log(`   แนว: ${!config.script.genre || config.script.genre === 'mix' ? 'สุ่มหลากหลายแนว' : config.script.genre}${process.env.CLIP_MOOD === 'happy' ? ' · เพิ่มความสุข' : ''}`)
   // ผู้เขียนบทเป็น Gemini → ให้ Gemini คิดหัวข้อด้วย · Gemini ล้มเมื่อไรใช้ ChatGPT แทนจนจบขั้นนี้
-  let topicGemini = writerOf(config) === 'gemini' ? geminiChat({ model: config.script.geminiModel }) : null
-  console.log(`   ${topicGemini ? 'Gemini' : 'ChatGPT'} กำลังเสนอหัวข้อและให้คะแนน…`)
+  let topicGemini = altWriter()
+  console.log(`   ${topicGemini ? topicGemini.name : 'ChatGPT'} กำลังเสนอหัวข้อและให้คะแนน…`)
   await requireBridge()
   let topics = []
   for (let attempt = 1; attempt <= 3 && !topics.length; attempt++) {
@@ -94,8 +94,8 @@ if (autoTopic) {
     const prompt = scoredTopicsPrompt(config, { avoid: [...recent.map((r) => r.title), ...rejected.map((r) => r.title)], seen })
     let result = null
     if (topicGemini) {
-      result = await topicGemini.ask(prompt).then((text) => ({ text }), (err) => {
-        console.warn(`   Gemini คิดหัวข้อไม่ได้ (${err.message}) — ใช้ ChatGPT แทน`)
+      result = await topicGemini.ask(prompt, { label: 'คิดหัวข้อ + ให้คะแนน' }).then((text) => ({ text }), (err) => {
+        console.warn(`   ${topicGemini.name} คิดหัวข้อไม่ได้ (${err.message}) — ใช้ ChatGPT แทน`)
         topicGemini = null
         return null
       })
@@ -322,15 +322,15 @@ async function askChatGPT(prompt, label, { tries = 3, attachments, timeoutMs = 4
  * restart = prompt ฉบับเต็มสำหรับเริ่มแชตใหม่ — ใช้ตอนเปลี่ยนผู้เขียนกลางการสั่งปรับในแชตเดิม (ChatGPT ไม่เห็นแชตของ Gemini)
  */
 const writer = (() => {
-  let gemini = writerOf(config) === 'gemini' ? geminiChat({ model: config.script.geminiModel }) : null
+  let gemini = altWriter()
   return {
-    get name() { return gemini ? 'Gemini' : 'ChatGPT' },
+    get name() { return gemini ? gemini.name : 'ChatGPT' },
     async ask(prompt, label, { newChat = true, restart, timeoutMs } = {}) {
       if (gemini) {
         try {
-          return await gemini.ask(prompt, { newChat })
+          return await gemini.ask(prompt, { newChat, label })
         } catch (err) {
-          console.warn(`   ${label}: Gemini ใช้ไม่ได้ (${err.message}) — เปลี่ยนไปใช้ ChatGPT สำหรับคลิปนี้`)
+          console.warn(`   ${label}: ${gemini.name} ใช้ไม่ได้ (${err.message}) — เปลี่ยนไปใช้ ChatGPT สำหรับคลิปนี้`)
           gemini = null
           if (!newChat && restart) return askChatGPT(restart(), label, { timeoutMs })
         }
@@ -339,6 +339,40 @@ const writer = (() => {
     },
   }
 })()
+
+/**
+ * ผู้เขียนที่ไม่ใช่ ChatGPT ตามตั้งค่า (script.writer) — null = ใช้ ChatGPT
+ *   gemini-web — แท็บ gemini.google.com ผ่านส่วนขยาย (ฟรี ใช้บัญชี Google ที่ล็อกอินใน Chrome)
+ *   gemini     — Gemini API (ต้องมี key และโปรเจกต์ที่เปิด billing)
+ * function declaration (hoisted) — ขั้นคิดหัวข้อเรียกใช้ก่อนถึงบรรทัดนี้ จึงห้ามพึ่งค่าคงที่ที่ประกาศทีหลัง
+ */
+function altWriter() {
+  const kind = writerOf(config)
+  if (kind === 'gemini') {
+    const chat = geminiChat({ model: config.script.geminiModel })
+    return { name: 'Gemini API', ask: (prompt, { newChat = true } = {}) => chat.ask(prompt, { newChat }) }
+  }
+  if (kind !== 'gemini-web') return null
+  return {
+    name: 'Gemini เว็บ',
+    async ask(prompt, { newChat = true, label = 'Gemini เว็บ', timeoutMs = 25 * 60_000 } = {}) {
+      let lastError
+      // ลองใหม่เมื่อหน้าเว็บค้าง/ตอบไม่สำเร็จชั่วคราว · ติดโควตาหรือยังไม่ล็อกอิน ลองซ้ำไม่ช่วย → ให้ผู้เรียกสลับไป ChatGPT
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const result = await runJob({ agent: 'gemini', kind: 'prompt', label, payload: { prompt: trimForWebWriter(prompt), newChat }, timeoutMs })
+          if (result?.text?.trim()) return result.text
+          lastError = new Error('Gemini เว็บตอบกลับว่าง')
+        } catch (err) {
+          lastError = err
+        }
+        if (/โควตา|ลงชื่อเข้าใช้/.test(lastError.message) || !newChat) break
+        await new Promise((r) => setTimeout(r, 30_000))
+      }
+      throw lastError
+    },
+  }
+}
 
 /** บทที่ใช้ไม่ได้ → เปลี่ยนชื่อเก็บไว้ (ไม่ลบ) ให้รอบหน้าเขียนใหม่ */
 function setAsideScript(file) {

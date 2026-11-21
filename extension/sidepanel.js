@@ -1755,10 +1755,11 @@ function renderClipSettings() {
 
 /** คำอธิบายใต้ชื่อผู้เขียนแต่ละคนบนสวิตช์ */
 const WRITER_INFO = {
-  chatgpt: { icon: '💬', sub: 'ผ่านแท็บ ChatGPT' },
-  gemini: { icon: '✦', sub: 'ผ่าน API · รุ่น pro ใหม่สุด' },
+  chatgpt: { icon: '💬', sub: 'แท็บ ChatGPT' },
+  'gemini-web': { icon: '✦', sub: 'แท็บ Gemini · ฟรี' },
+  gemini: { icon: '🔑', sub: 'API key · ต้องเปิด billing' },
 }
-/** สวิตช์ผู้เขียนบท — การ์ดใหญ่ 2 ใบ ใบที่ใช้อยู่ทึบสีพร้อม ✓ · โปรแกรมในเครื่องรุ่นเก่าไม่ส่งตัวเลือกมา → ซ่อน */
+/** สวิตช์ผู้เขียนบท — การ์ดใหญ่ใบละผู้เขียน ใบที่ใช้อยู่ทึบสีพร้อม ✓ · โปรแกรมในเครื่องรุ่นเก่าไม่ส่งตัวเลือกมา → ซ่อน */
 function renderWriterSwitch(note) {
   const box = $('clipWriter')
   const options = clip?.options?.writer ?? []
@@ -1780,19 +1781,23 @@ function renderWriterSwitch(note) {
     }
   }
   for (const b of box.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.value === clip.writer))
-  const gemini = clip.writer === 'gemini'
+  const useApi = clip.writer === 'gemini'
+  const web = clip.writer === 'gemini-web'
   const hasKey = !!clip.gemini?.hasKey
-  $('writerKeyRow').hidden = !(gemini && !hasKey)
+  $('writerKeyRow').hidden = !(useApi && !hasKey)
   const status = $('clipWriterHint')
-  status.dataset.tone = gemini && !hasKey ? 'warn' : 'ok'
-  status.textContent = note ?? (gemini
-    ? hasKey
-      ? '🔑 มี Gemini key แล้ว — คลิปถัดไป Gemini คิดหัวข้อและเขียนบท · ถ้า Gemini ใช้ไม่ได้จะใช้ ChatGPT แทนเอง · กำกับภาพและคำโพสต์ยังเป็น ChatGPT'
-      : '⚠️ ยังไม่มี Gemini key — ใส่ key ด้านล่างก่อน ไม่งั้นคลิปถัดไปจะยังใช้ ChatGPT เขียน'
-    : 'คลิปถัดไป ChatGPT คิดหัวข้อและเขียนบทผ่านแท็บเบราว์เซอร์')
+  status.dataset.tone = useApi && !hasKey ? 'warn' : 'ok'
+  const fallback = 'ถ้าใช้ไม่ได้จะใช้ ChatGPT แทนเอง · กำกับภาพและคำโพสต์ยังเป็น ChatGPT'
+  status.textContent = note ?? (web
+    ? `คลิปถัดไป Gemini คิดหัวข้อและเขียนบทในแท็บ gemini.google.com (ต้องล็อกอิน Google ใน Chrome นี้) · ${fallback}`
+    : useApi
+      ? hasKey
+        ? `🔑 มี Gemini key แล้ว — คลิปถัดไป Gemini API คิดหัวข้อและเขียนบท (โปรเจกต์ของ key ต้องเปิด billing) · ${fallback}`
+        : '⚠️ ยังไม่มี Gemini key — ใส่ key ด้านล่างก่อน ไม่งั้นคลิปถัดไปจะยังใช้ ChatGPT เขียน'
+      : 'คลิปถัดไป ChatGPT คิดหัวข้อและเขียนบทผ่านแท็บเบราว์เซอร์')
   // หัวกล่องบอกผู้เขียนที่ใช้อยู่ด้วย
   const head = $('autoTopicBlock').querySelector('.blockHead')
-  head.dataset.agentLabel = `ปราชญ์เขียนบท · ${gemini && hasKey ? 'Gemini' : 'ChatGPT'}`
+  head.dataset.agentLabel = `ปราชญ์เขียนบท · ${web ? 'Gemini เว็บ' : useApi && hasKey ? 'Gemini API' : 'ChatGPT'}`
 }
 
 async function saveWriterKey() {

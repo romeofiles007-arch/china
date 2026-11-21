@@ -17,11 +17,14 @@ const AGENTS = {
   // ?hl=en: บัญชีที่ตั้งภาษาไทย Flow จะเป็นภาษาไทย (ปุ่ม "โปรเจ็กต์ใหม่") — ตัวขับหาปุ่มจากข้อความอังกฤษ จึงบังคับภาษาอังกฤษเสมอ
   flow: { match: 'https://flow.google.com/?hl=en', pattern: 'https://flow.google.com/*', key: 'flowTabId' },
   tiktok: { match: 'https://www.tiktok.com/tiktokstudio/upload', pattern: 'https://www.tiktok.com/tiktokstudio/*', key: 'tiktokTabId' },
+  // Gemini เว็บ — ผู้เขียนบท/หัวข้อแทน ChatGPT (21 พ.ย. 2026: API ต้องเปิด billing ผู้ใช้ขอใช้เว็บ)
+  gemini: { match: 'https://gemini.google.com/app', pattern: 'https://gemini.google.com/*', key: 'geminiTabId' },
 }
 const CONTENT_FILES = {
   chatgpt: ['selectors.js', 'content-common.js', 'content-chatgpt.js'],
   flow: ['flow-text.js', 'flow-quota.js', 'content-flow-agent.js'],
   tiktok: ['content-common.js', 'tiktok-dom.js', 'content-tiktok.js'],
+  gemini: ['content-common.js', 'content-gemini.js'],
 }
 
 async function settings() {
@@ -317,8 +320,8 @@ async function runJob(job, agent) {
 
   // ChatGPT: แชตใหม่ = โหลดหน้าแรกใหม่ (แบบเดียวกับแผงข้าง) — กดปุ่ม New chat จาก content script ไม่ได้ผลกับหน้ารุ่นใหม่ (ต.ค. 2026)
   // โหลดจากตรงนี้ก่อนส่งงาน เพราะถ้าให้ content script โหลดหน้าเอง ตัวมันจะหายไปกลางงาน
-  if (agent === 'chatgpt' && job.kind === 'prompt' && job.payload.newChat !== false) {
-    await chrome.tabs.update(tab.id, { url: AGENTS.chatgpt.match })
+  if ((agent === 'chatgpt' || agent === 'gemini') && job.kind === 'prompt' && job.payload.newChat !== false) {
+    await chrome.tabs.update(tab.id, { url: AGENTS[agent].match })
     await new Promise((resolve) => {
       const listener = (id, info) => {
         if (id === tab.id && info.status === 'complete') {
@@ -330,7 +333,7 @@ async function runJob(job, agent) {
       setTimeout(resolve, 30_000)
     })
     await new Promise((r) => setTimeout(r, 2500)) // หน้า SPA render ช่องพิมพ์ต่ออีกนิด
-    await reloadIfTranslated(tab.id, AGENTS.chatgpt.match, 2500)
+    await reloadIfTranslated(tab.id, AGENTS[agent].match, 2500)
   }
 
   const response = await chrome.tabs.sendMessage(tab.id, { type: 'RUN_JOB', job }).catch(async (err) => {
