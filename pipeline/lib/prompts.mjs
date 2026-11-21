@@ -8,7 +8,7 @@ import { readProfile } from './clip_profile.mjs'
 
 import * as shared from '../../extension/prompts.js'
 
-export const { cleanScript, parseTopics, GENRES, opensWithHaveYouEver, endsWithLesson } = shared
+export const { cleanScript, parseTopics, GENRES, opensWithHaveYouEver, endsWithLesson, endsGeneric, tellsAsYou } = shared
 
 /** Blueprint คือแหล่งความจริงเดียวของกติกาทั้งหมด — ส่งไปทั้งฉบับทุกครั้ง ไม่สรุปย่อ */
 export const BLUEPRINT_MARK = 'V6 จีนโบราณ'

@@ -21,7 +21,7 @@ import { join, dirname, basename } from 'node:path'
 import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
 import { bgmFor, bgmMode, bgmDb } from './lib/bgm.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
-import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver, endsWithLesson } from './lib/prompts.mjs'
+import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver, endsWithLesson, endsGeneric, tellsAsYou } from './lib/prompts.mjs'
 import { saveScript, loadScript, scriptProblem } from './lib/stage2.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from './lib/shotlist.mjs'
 import { collectImages } from './lib/shotfile.mjs'
@@ -347,6 +347,18 @@ async function scriptDepartment() {
     if (endsWithLesson(text) && attempt < 3) {
       console.warn('   บทปิดท้ายด้วยข้อคิด/บทเรียน — ขอเขียนใหม่ให้เล่าอย่างเดียว')
       feedback = '\n\n⚠️ บทรอบก่อนปิดท้ายด้วยการถอดข้อคิด/สรุปบทเรียน ซึ่งห้ามทำ — เขียนบทใหม่ทั้งหมด เล่าเรื่องอย่างเดียวจนจบ แล้วปิดด้วยประโยคเฉียบคมสั้นๆ เพียง 1 ประโยค ห้ามมีคำว่า ข้อคิด บทเรียน "เรื่องนี้สอนเรา" "นำไปใช้" หรือโยงมาชีวิตคนยุคนี้'
+      continue
+    }
+    // ผู้ใช้ (21 พ.ย. 2026): "สาระน้อย ไม่มีจังหวะให้ติดตาม" — ตัวเอกเป็น "คุณ" ไม่มีชื่อ ไม่มีเดิมพัน · รอบสุดท้ายยอมรับ
+    if (profile?.category !== 'self' && tellsAsYou(text) && attempt < 3) {
+      console.warn('   บทเล่าให้ "คุณ" เป็นตัวละคร — ขอเขียนใหม่แบบบุรุษที่ 3')
+      feedback = '\n\n⚠️ บทรอบก่อนให้ "คุณ" เป็นตัวละครในเรื่อง ("คุณยืนอยู่…" "คุณก้มลง…") ซึ่งห้ามทำ — เขียนบทใหม่ทั้งหมดแบบบุรุษที่ 3 ตัวเอกมีชื่อ มีเป้าหมาย มีสิ่งที่จะเสีย และทำตาม "หัวใจของบท" ครบทุกข้อ'
+      continue
+    }
+    // ประโยคปิดลอยๆ "บางครั้ง… ก็…" ใช้กับเรื่องไหนก็ได้ → ขอใหม่ · รอบสุดท้ายยอมรับ
+    if (endsGeneric(text) && attempt < 3) {
+      console.warn('   บทปิดด้วยประโยคกว้างๆ ("บางครั้ง…") — ขอเขียนใหม่ให้ประโยคปิดผูกกับเรื่อง')
+      feedback = '\n\n⚠️ บทรอบก่อนปิดด้วยประโยคกว้างๆ ที่ใช้กับเรื่องไหนก็ได้ (ขึ้นต้น "บางครั้ง…" "สุดท้ายแล้ว…") — เขียนบทใหม่ทั้งหมด ประโยคปิดต้องอ้างสิ่งของ คำพูด หรือภาพจากในเรื่องนี้ และตรวจว่าบทมีปม อุปสรรคที่หนักขึ้น ฉากเด็ด และจุดพลิกครบ'
       continue
     }
     // ChatGPT ถามกลับแทนที่จะเขียนบท เช่น "ต้องการให้ใช้บุคคลใดเป็นตัวเอกครับ?" → ขอใหม่
