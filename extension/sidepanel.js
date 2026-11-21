@@ -3665,6 +3665,59 @@ resumeAuto()
 loadUpdate()
 setInterval(() => loadUpdate(), 10 * 60_000)
 
+/**
+ * ⏹ หยุดทุกอย่าง — ผู้ใช้ 21 พ.ย. 2026: "บางทีปุ่มหยุดใช้ไม่ได้ มันยังทำงานเอง"
+ * ปุ่มเดียวหยุด: ผลิตต่อเนื่อง · คลิปที่ทำอยู่ · งานในแท็บ ChatGPT/Flow/Gemini/TikTok · โพสต์อัตโนมัติ · process ที่หลุดการควบคุม
+ * หยุดแล้วค้างไว้ (รอดการรีสตาร์ท) จนกด "ทำงานต่อ" — ทำงานต่อแล้วก็ไม่เริ่มอะไรเอง
+ */
+let halt = null
+let haltBusy = false
+function renderHalt() {
+  const bar = $('haltBar')
+  bar.hidden = !halt
+  if (!halt) return
+  const on = !!halt.halted
+  bar.dataset.halted = String(on)
+  const at = halt.at ? new Date(halt.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''
+  $('haltTitle').textContent = on ? `⏹ หยุดทุกอย่างไว้${at ? ` ตั้งแต่ ${at} น.` : ''}` : 'ระบบทำงานปกติ'
+  $('haltSub').textContent = on
+    ? `ไม่มีอะไรทำงานเองจนกว่าจะกดทำงานต่อ: ผลิตต่อเนื่อง โพสต์อัตโนมัติ และงานในแท็บ AI หยุดหมด${halt.run === 'running' ? ' · ⚠️ ยังมีขั้นหนึ่งกำลังปิดตัว' : ''}`
+    : 'กดหยุดทุกอย่างเมื่ออยากให้ทุกส่วนหยุดทันที: ผลิตต่อเนื่อง คลิปที่ทำอยู่ งานในแท็บ AI และโพสต์อัตโนมัติ'
+  const btn = $('haltButton')
+  btn.textContent = haltBusy ? (on ? 'กำลังปลด…' : 'กำลังหยุด…') : on ? '▶ ทำงานต่อ' : '⏹ หยุดทุกอย่าง'
+  btn.disabled = haltBusy
+}
+async function haltCall(on) {
+  try {
+    const app = await localApp()
+    halt = await api(app, '/api/halt', on === undefined ? undefined : { on })
+  } catch {
+    // โปรแกรมในเครื่องรุ่นเก่ายังไม่มีปุ่มนี้ / ยังไม่เปิด → ซ่อนแถบ
+    if (on === undefined) halt = null
+    else throw new Error('สั่งไม่สำเร็จ — โปรแกรมในเครื่องยังไม่เปิด')
+  }
+  renderHalt()
+}
+$('haltButton').addEventListener('click', async () => {
+  const stopping = !halt?.halted
+  haltBusy = true
+  renderHalt()
+  try {
+    await haltCall(stopping)
+    // หยุดแล้ว → แท็บ ChatGPT/Gemini ที่แผงข้างสั่งตรง (ไม่ผ่านโปรแกรม) ก็ต้องหยุดด้วย
+    if (stopping) {
+      chrome.runtime.sendMessage({ type: 'STOP_ALL_TABS' }).catch(() => {})
+      prodCall('/api/production')
+    }
+  } catch (err) {
+    $('haltSub').textContent = err.message
+  } finally {
+    haltBusy = false
+    renderHalt()
+  }
+})
+haltCall()
+
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
 let prodFilled = false
@@ -4089,6 +4142,7 @@ chrome.runtime.sendMessage({ type: 'ENSURE_APP' }).then((app) => app?.ok && api(
 setInterval(() => {
   if (prod?.state.active || $('prodBox').open) prodCall('/api/production')
   followAutoInBackground()
+  if (typeof haltCall === 'function') haltCall() // แถบหยุดทุกอย่าง (ไม่อยู่ในส่วนผลิตต่อเนื่อง)
 }, 20_000)
 
 /**

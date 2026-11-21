@@ -53,7 +53,11 @@ window.fetch = async (input, init) => {
     if (url.pathname === '/api/clip-settings' && sent.writer) window.fixtureWriter = sent.writer
     if (url.pathname === '/api/gemini-key') window.fixtureGeminiKey = true
     const writerFixture = { writer: window.fixtureWriter || params.get('writer') || 'chatgpt', gemini: { hasKey: !!window.fixtureGeminiKey || params.get('key') === 'on' } }
-    const payload = url.pathname === '/api/gemini-key' ? {hasKey:true}
+    // หยุดทุกอย่าง: จำค่าที่กด (?halt=on เริ่มแบบหยุดอยู่)
+    if (url.pathname === '/api/halt' && 'on' in sent) window.fixtureHalt = !!sent.on
+    const haltOn = window.fixtureHalt ?? params.get('halt') === 'on'
+    const payload = url.pathname === '/api/halt' ? {halted: haltOn, at: haltOn ? Date.now() - 600000 : null, run: null, production: false}
+      : url.pathname === '/api/gemini-key' ? {hasKey:true}
       : url.pathname === '/api/videos' ? {videos:[]}
       : url.pathname === '/api/projects' ? {projects:[]}
       : url.pathname === '/api/posting' ? {settings:{enabledAt:null,autoCheck:false,autoApprove:false,slots:[],drive:{connected:false}},queue:[],facebook:[],youtube:[],categories:[]}

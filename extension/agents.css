@@ -658,3 +658,17 @@ main .writerCard[aria-checked='true'] .writerTick { display: inline-block; }
 .writerKey .pickRow input { flex: 1; min-width: 0; }
 @media (prefers-color-scheme: dark) { .writerStatus[data-tone='warn'] { color: #f0b260; } }
 @media (max-width: 300px) { .writerCards { grid-template-columns: 1fr; } }
+
+/* ── ⏹ หยุดทุกอย่าง — แถบบนสุดของแผง ปกติเป็นปุ่มแดงเส้นขอบ · หยุดอยู่ = แถบแดงทึบ + ปุ่มทำงานต่อสีเขียว ── */
+.haltBar { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid color-mix(in srgb, #c62828 45%, var(--line)); background: var(--panel); }
+.haltText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.haltText strong { font-size: 13.5px; line-height: 1.3; }
+.haltText span { font-size: 11.5px; line-height: 1.45; opacity: .8; }
+main .haltButton { flex: none; min-height: 40px; padding: 8px 14px; border-radius: 10px; font-weight: 800; font-size: 14px; cursor: pointer; border: 1.5px solid #c62828; background: #c62828; color: #fff; }
+main .haltButton:hover:not(:disabled) { background: #a51f1f; border-color: #a51f1f; }
+main .haltButton:disabled { opacity: .7; cursor: progress; }
+.haltBar[data-halted='true'] { background: #b71c1c; border-color: #b71c1c; color: #fff; }
+.haltBar[data-halted='true'] .haltText span { opacity: .92; }
+.haltBar[data-halted='true'] .haltButton { background: #fff; color: #1b5e20; border-color: #fff; }
+.haltBar[data-halted='true'] .haltButton:hover:not(:disabled) { background: #e8f5e9; }
+@media (max-width: 380px) { .haltBar { flex-wrap: wrap; } main .haltButton { width: 100%; } }

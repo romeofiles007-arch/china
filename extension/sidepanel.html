@@ -282,6 +282,15 @@
     <p class="hint" id="buddhaHint" style="margin:4px 0 0"></p>
   </section>
 
+  <!-- ⏹ หยุดทุกอย่าง — ผู้ใช้ 21 พ.ย. 2026: "บางทีปุ่มหยุดใช้ไม่ได้ มันยังทำงานเอง" (bridge/halt.js) -->
+  <section class="haltBar" id="haltBar" data-halted="false" hidden aria-label="หยุดทุกอย่าง">
+    <div class="haltText" role="status" aria-live="polite">
+      <strong id="haltTitle">ระบบทำงานปกติ</strong>
+      <span id="haltSub">กดหยุดทุกอย่างเมื่ออยากให้ทุกส่วนหยุดทันที: ผลิตต่อเนื่อง คลิปที่ทำอยู่ งานในแท็บ AI และโพสต์อัตโนมัติ</span>
+    </div>
+    <button type="button" class="haltButton" id="haltButton">⏹ หยุดทุกอย่าง</button>
+  </section>
+
   <!-- ฉากวัดและตัวละคร 12 เฟรมอยู่ในส่วนขยาย -->
   <section class="studioHero" id="studioHero" aria-label="สถานะทีมงาน">
     <div class="heroBanner">
