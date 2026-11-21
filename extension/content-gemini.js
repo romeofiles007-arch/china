@@ -28,7 +28,7 @@ const sleep = async (ms) => {
 
 const MAX_INPUT = 30_000 // เผื่อจากเพดานจริง ~32,500
 const label = (b) => (b.getAttribute('aria-label') || '').trim()
-const editor = () => document.querySelector('rich-textarea .ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"]')
+const editor = () => document.querySelector('rich-textarea .ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"], input-area-v2 [contenteditable="true"], [role="textbox"][contenteditable="true"]')
 const buttons = (root = document) => [...root.querySelectorAll('button')].filter((b) => b.offsetParent)
 const sendButton = () => buttons().find((b) => /^(ส่งข้อความ|send message)$/i.test(label(b)))
 const stopButton = () => buttons().find((b) => /^(หยุดคำตอบ|stop response|หยุดสร้าง|stop generating)/i.test(label(b)))
@@ -129,11 +129,20 @@ async function fillPrompt(prompt) {
 async function startNewChat() {
   // service worker โหลดหน้า /app ให้ก่อนส่งงานแล้ว — หน้าว่างอยู่แล้วก็ไม่ต้องทำอะไร
   const empty = () => !responses().length && editor()
-  if (await waitFor(empty, { timeout: 10_000, label: 'แชตใหม่ของ Gemini' }).then(() => true, () => false)) return sleep(500)
+  // หน้า Angular ของ Gemini โหลดช่องพิมพ์ช้าได้หลายวินาทีหลังหน้า "complete"
+  if (await waitFor(empty, { timeout: 25_000, label: 'แชตใหม่ของ Gemini' }).then(() => true, () => false)) return sleep(500)
   const link = [...document.querySelectorAll('a, button')].find((b) => /^(แชทใหม่|new chat)$/i.test(label(b)) && b.offsetParent)
   if (link) link.click()
-  if (await waitFor(empty, { timeout: 10_000, label: 'แชตใหม่ของ Gemini' }).then(() => true, () => false)) return sleep(500)
-  throw new Error('เปิดแชตใหม่ใน Gemini ไม่สำเร็จ — แชตเก่ายังค้างอยู่บนหน้า')
+  if (await waitFor(empty, { timeout: 15_000, label: 'แชตใหม่ของ Gemini' }).then(() => true, () => false)) return sleep(500)
+  throw new Error(`เปิดแชตใหม่ใน Gemini ไม่สำเร็จ — ${pageState()}`)
+}
+
+/** สภาพหน้าตอนพัง — ผู้ดูแลมองไม่เห็นจอเครื่องผลิต ต้องรู้จากข้อความ error */
+function pageState() {
+  const signIn = [...document.querySelectorAll('a, button')].some((b) => /^(sign in|ลงชื่อเข้าใช้)$/i.test((b.textContent || '').trim()) && b.offsetParent)
+  const editable = document.querySelectorAll('[contenteditable="true"]').length
+  const why = signIn ? 'ยังไม่ได้ลงชื่อเข้าใช้ Google ในแท็บ Gemini' : !editor() ? 'หาช่องพิมพ์ไม่เจอ' : 'แชตเก่ายังค้างอยู่บนหน้า'
+  return `${why} [${location.host}${location.pathname} · คำตอบเดิม ${responses().length} · ช่องพิมพ์ rich-textarea ${document.querySelectorAll('rich-textarea').length} · contenteditable ${editable} · "${document.title.slice(0, 40)}"]`
 }
 
 async function runPrompt(prompt, { newChat = true } = {}) {
