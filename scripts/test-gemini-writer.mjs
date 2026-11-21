@@ -87,6 +87,12 @@ test('แผงข้าง: ปุ่มผู้เขียนบท + ช่
   const js = read('extension/sidepanel.js')
   const ui = read('bridge/ui.js')
   assert.match(html, /id="clipWriter"/)
+  // ผู้ใช้: "ทำปุ่มสลับให้เห็นชัดเจน" — สวิตช์อยู่บนสุดของกล่องหัวข้อและบท ก่อนเลือกหัวข้อ
+  assert.ok(html.indexOf('id="writerSwitch"') < html.indexOf('id="autoTopicMode"'), 'สวิตช์ผู้เขียนบทต้องอยู่บนสุดของกล่อง')
+  // วาง key แล้วลืมกดบันทึก → key ไม่ถูกเก็บ · Enter/วาง ต้องบันทึกเอง
+  assert.match(js, /writerGeminiKey'\)\.addEventListener\('keydown'/)
+  assert.match(js, /writerGeminiKey'\)\.addEventListener\('paste'/)
+  assert.match(ui, /\[\\w\.-\]\{20,\}/, 'รับ key ที่มีจุด')
   assert.match(html, /id="writerGeminiKey"/)
   assert.match(js, /saveClipSettings\(\{ writer: b\.dataset\.value \}\)/)
   assert.match(ui, /if \(WRITERS\[body\.writer\]\) c\.script\.writer = body\.writer/)

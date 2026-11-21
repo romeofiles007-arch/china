@@ -47,7 +47,13 @@ window.fetch = async (input, init) => {
     return originalFetch('/fixture-agents?'+params)
   }
   if (url.pathname.startsWith('/api/')) {
-    const payload = url.pathname === '/api/videos' ? {videos:[]}
+    // ผู้เขียนบท: จำค่าที่กด + key จำลอง (?writer=gemini&key=on)
+    const sent = init && init.body ? JSON.parse(init.body) : {}
+    if (url.pathname === '/api/clip-settings' && sent.writer) window.fixtureWriter = sent.writer
+    if (url.pathname === '/api/gemini-key') window.fixtureGeminiKey = true
+    const writerFixture = { writer: window.fixtureWriter || params.get('writer') || 'chatgpt', gemini: { hasKey: !!window.fixtureGeminiKey || params.get('key') === 'on' } }
+    const payload = url.pathname === '/api/gemini-key' ? {hasKey:true}
+      : url.pathname === '/api/videos' ? {videos:[]}
       : url.pathname === '/api/projects' ? {projects:[]}
       : url.pathname === '/api/posting' ? {settings:{enabledAt:null,autoCheck:false,autoApprove:false,slots:[],drive:{connected:false}},queue:[],facebook:[],youtube:[],categories:[]}
       : url.pathname === '/api/checklist' ? {items:[]}
@@ -73,7 +79,7 @@ window.fetch = async (input, init) => {
               { at: at(15.2), src: 'run', text: '❌ หยุดที่แผนกทำแอนิเมชัน — ล้มเหลวติดกัน 2 ช็อต' },
             ] }
         })() : {status:null,run:null})
-      : url.pathname === '/api/clip-settings' ? {orientation:'landscape',subtitles:'none',pause:'natural',motion:'gentle',aiCoverage:params.get('kie')==='on'?'20':'off',kieTier:'cheap',kie:{hasKey:false,label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},options:{subtitles:[{id:'none',label:'ไม่ใส่'}],pause:[{id:'natural',label:'ปกติ'}],motion:[{id:'gentle',label:'ซูมช้า'}],aiCoverage:[{id:'off',label:'ปิด'},{id:'20',label:'20%'},{id:'60',label:'60%'},{id:'80',label:'80%'},{id:'100',label:'100%'}],kieTier:[{id:'cheap',label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},{id:'mid',label:'พอใช้',name:'Hailuo 2.3',credits:30,detail:'768p · 6 วิ'},{id:'pro',label:'เก่ง',name:'Kling 2.6',credits:55,detail:'คมชัด · 5 วิ'}]}} : {}
+      : url.pathname === '/api/clip-settings' ? {...writerFixture,orientation:'landscape',subtitles:'none',pause:'natural',motion:'gentle',aiCoverage:params.get('kie')==='on'?'20':'off',kieTier:'cheap',kie:{hasKey:false,label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},options:{writer:[{id:'chatgpt',label:'ChatGPT'},{id:'gemini',label:'Gemini'}],subtitles:[{id:'none',label:'ไม่ใส่'}],pause:[{id:'natural',label:'ปกติ'}],motion:[{id:'gentle',label:'ซูมช้า'}],aiCoverage:[{id:'off',label:'ปิด'},{id:'20',label:'20%'},{id:'60',label:'60%'},{id:'80',label:'80%'},{id:'100',label:'100%'}],kieTier:[{id:'cheap',label:'ถูก',name:'Seedance 1.5 Pro',credits:8.75,detail:'480p · 5 วิ'},{id:'mid',label:'พอใช้',name:'Hailuo 2.3',credits:30,detail:'768p · 6 วิ'},{id:'pro',label:'เก่ง',name:'Kling 2.6',credits:55,detail:'คมชัด · 5 วิ'}]}} : {}
     return new Response(JSON.stringify(payload), {headers:{'content-type':'application/json'}})
   }
   return originalFetch(input, init)

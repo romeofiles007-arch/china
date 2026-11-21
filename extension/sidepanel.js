@@ -1681,24 +1681,7 @@ function renderClipSettings() {
     happy: 'หัวข้อและบทเน้นความสุข อิ่มใจ มีกำลังใจ ไม่เสนอความทุกข์ ปัญหา ความกลัว นรก หรือความตาย',
   }[clip.mood] ?? ''
   // ผู้เขียนบท: ChatGPT · Gemini — โปรแกรมในเครื่องรุ่นเก่าไม่ส่งมา → ซ่อน
-  const writer = $('clipWriter')
-  const writerOptions = clip.options.writer ?? []
-  writer.parentElement.hidden = !writerOptions.length
-  if (!writer.childElementCount) {
-    for (const o of writerOptions) {
-      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: o.label })
-      b.dataset.value = o.id
-      writer.append(b)
-    }
-  }
-  for (const b of writer.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.writer))
-  const needKey = clip.writer === 'gemini' && !clip.gemini?.hasKey
-  $('writerKeyRow').hidden = !needKey
-  $('clipWriterHint').textContent = clip.writer === 'gemini'
-    ? needKey
-      ? 'ใส่ Gemini API key ก่อน — ยังไม่มี key ระบบจะใช้ ChatGPT เขียนแทน'
-      : 'Gemini คิดหัวข้อและเขียนบท (เลือกรุ่น pro ใหม่สุดเอง) · ถ้า Gemini ใช้ไม่ได้ ระบบใช้ ChatGPT แทนอัตโนมัติ · กำกับภาพและคำโพสต์ยังใช้ ChatGPT'
-    : 'ChatGPT คิดหัวข้อและเขียนบทผ่านแท็บเบราว์เซอร์'
+  renderWriterSwitch()
   // ผู้ช่วยจัดฉาก/Kie — เลือกสัดส่วนของฉากทั้งเรื่อง
   const ai = $('clipAi')
   const aiOptions = clip.options.aiCoverage ?? clip.options.aiClips ?? []
@@ -1770,6 +1753,68 @@ function renderClipSettings() {
   for (const el of [...$('clipOrientation').querySelectorAll('button'), sel, bgm, ...pause.querySelectorAll('button'), ...motion.querySelectorAll('button'), ...ai.querySelectorAll('button')]) el.disabled = localBusy()
 }
 
+/** คำอธิบายใต้ชื่อผู้เขียนแต่ละคนบนสวิตช์ */
+const WRITER_INFO = {
+  chatgpt: { icon: '💬', sub: 'ผ่านแท็บ ChatGPT' },
+  gemini: { icon: '✦', sub: 'ผ่าน API · รุ่น pro ใหม่สุด' },
+}
+/** สวิตช์ผู้เขียนบท — การ์ดใหญ่ 2 ใบ ใบที่ใช้อยู่ทึบสีพร้อม ✓ · โปรแกรมในเครื่องรุ่นเก่าไม่ส่งตัวเลือกมา → ซ่อน */
+function renderWriterSwitch(note) {
+  const box = $('clipWriter')
+  const options = clip?.options?.writer ?? []
+  $('writerSwitch').hidden = !options.length
+  if (!options.length) return
+  if (!box.childElementCount) {
+    for (const o of options) {
+      const info = WRITER_INFO[o.id] ?? { icon: '', sub: '' }
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'writerCard'
+      b.dataset.value = o.id
+      b.setAttribute('role', 'radio')
+      b.innerHTML = `<span class="writerIcon" aria-hidden="true"></span><span class="writerName"></span><span class="writerSub"></span><span class="writerTick" aria-hidden="true">✓</span>`
+      b.querySelector('.writerIcon').textContent = info.icon
+      b.querySelector('.writerName').textContent = o.label
+      b.querySelector('.writerSub').textContent = info.sub
+      box.append(b)
+    }
+  }
+  for (const b of box.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.value === clip.writer))
+  const gemini = clip.writer === 'gemini'
+  const hasKey = !!clip.gemini?.hasKey
+  $('writerKeyRow').hidden = !(gemini && !hasKey)
+  const status = $('clipWriterHint')
+  status.dataset.tone = gemini && !hasKey ? 'warn' : 'ok'
+  status.textContent = note ?? (gemini
+    ? hasKey
+      ? '🔑 มี Gemini key แล้ว — คลิปถัดไป Gemini คิดหัวข้อและเขียนบท · ถ้า Gemini ใช้ไม่ได้จะใช้ ChatGPT แทนเอง · กำกับภาพและคำโพสต์ยังเป็น ChatGPT'
+      : '⚠️ ยังไม่มี Gemini key — ใส่ key ด้านล่างก่อน ไม่งั้นคลิปถัดไปจะยังใช้ ChatGPT เขียน'
+    : 'คลิปถัดไป ChatGPT คิดหัวข้อและเขียนบทผ่านแท็บเบราว์เซอร์')
+  // หัวกล่องบอกผู้เขียนที่ใช้อยู่ด้วย
+  const head = $('autoTopicBlock').querySelector('.blockHead')
+  head.dataset.agentLabel = `ปราชญ์เขียนบท · ${gemini && hasKey ? 'Gemini' : 'ChatGPT'}`
+}
+
+async function saveWriterKey() {
+  const input = $('writerGeminiKey')
+  const key = input.value.trim()
+  if (!key) return input.focus()
+  const button = $('saveWriterGeminiKey')
+  button.disabled = true
+  try {
+    await api(await localApp(), '/api/gemini-key', { key })
+    input.value = ''
+    if (V.gemini) V.gemini.hasKey = true
+    clip = await api(await localApp(), '/api/clip-settings', {})
+    renderWriterSwitch('✅ บันทึก Gemini key แล้ว — คลิปถัดไป Gemini จะเป็นคนเขียนบท')
+  } catch (err) {
+    renderWriterSwitch(`❌ บันทึก key ไม่สำเร็จ: ${err.message}`)
+    $('clipWriterHint').dataset.tone = 'warn'
+  } finally {
+    button.disabled = false
+  }
+}
+
 async function saveClipSettings(change) {
   try {
     clip = await api(await localApp(), '/api/clip-settings', change)
@@ -1803,18 +1848,10 @@ $('clipWriter').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ writer: b.dataset.value })
 })
-$('saveWriterGeminiKey').addEventListener('click', async () => {
-  const key = $('writerGeminiKey').value.trim()
-  if (!key) return
-  try {
-    await api(await localApp(), '/api/gemini-key', { key })
-    $('writerGeminiKey').value = ''
-    if (V.gemini) V.gemini.hasKey = true
-    await saveClipSettings({})
-  } catch (err) {
-    $('clipWriterHint').textContent = err.message
-  }
-})
+// กดบันทึก หรือ Enter — วาง key แล้วลืมกดบันทึกเคยทำให้ key ไม่ถูกเก็บ (21 พ.ย. 2026)
+$('saveWriterGeminiKey').addEventListener('click', saveWriterKey)
+$('writerGeminiKey').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveWriterKey() })
+$('writerGeminiKey').addEventListener('paste', () => setTimeout(saveWriterKey, 0))
 $('clipEngage').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ engage: b.dataset.value })

@@ -473,6 +473,19 @@
     </div>
     <div class="agentBlock agentSetting" id="autoTopicBlock" data-agent="chatgpt" data-agent-label="ChatGPT">
     <div class="blockHead" data-agent-label="ปราชญ์เขียนบท · ChatGPT"><span class="blockTitle">หัวข้อและบท</span></div>
+    <!-- ผู้เขียนบท: สวิตช์ใหญ่บนสุดของกล่อง ให้เห็นทันทีว่าตอนนี้ใครเขียน (ผู้ใช้ 21 พ.ย. 2026: "ทำปุ่มสลับให้เห็นชัดเจน") -->
+    <div class="writerSwitch" id="writerSwitch" hidden>
+      <div class="writerSwitchLabel">ใครเขียนหัวข้อและบท</div>
+      <div class="writerCards" id="clipWriter" role="radiogroup" aria-label="ผู้เขียนบท"></div>
+      <p class="writerStatus" id="clipWriterHint" role="status"></p>
+      <div class="writerKey" id="writerKeyRow" hidden>
+        <label for="writerGeminiKey">Gemini API key <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">สร้างฟรีที่นี่</a></label>
+        <div class="pickRow">
+          <input type="password" id="writerGeminiKey" placeholder="วาง key แล้วกด Enter หรือ บันทึก" autocomplete="off" />
+          <button class="primary" id="saveWriterGeminiKey" type="button">บันทึก key</button>
+        </div>
+      </div>
+    </div>
     <div class="pick">หัวข้อคลิป
       <div class="seg topicMode" id="autoTopicMode" role="group" aria-label="วิธีเลือกหัวข้อ">
         <button type="button" data-value="manual">✍️ พิมพ์เอง</button>
@@ -494,14 +507,6 @@
     <div class="pick" hidden>แนวเนื้อหา
       <div class="seg" id="clipMood" role="group" aria-label="แนวเนื้อหา"></div>
       <span class="hint" id="clipMoodHint" style="margin:2px 0 0"></span>
-    </div>
-    <div class="pick" hidden>ผู้เขียนบท
-      <div class="seg" id="clipWriter" role="group" aria-label="ผู้เขียนบท"></div>
-      <span class="hint" id="clipWriterHint" style="margin:2px 0 0"></span>
-      <div class="pickRow" id="writerKeyRow" hidden style="margin-top:6px">
-        <input type="password" id="writerGeminiKey" placeholder="วาง Gemini API key (สร้างฟรีที่ aistudio.google.com/apikey)" autocomplete="off" />
-        <button class="ghost" id="saveWriterGeminiKey" type="button">บันทึก</button>
-      </div>
     </div>
     <div class="pick" hidden>ชวนคุยท้ายคลิป
       <div class="seg" id="clipEngage" role="group" aria-label="ชวนคุยท้ายคลิป"></div>

@@ -626,3 +626,34 @@ main > section.step.agentSetting > h2 { min-height: 0; padding-top: 11px; paddin
 #voiceSettingsBox .pickRow select { min-width: 0; flex: 1; }
 .voiceMovedHint { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .linkBtn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+/* ── สวิตช์ผู้เขียนบท (ChatGPT / Gemini) — บนสุดของกล่องหัวข้อและบท ให้เห็นชัดว่าใครเขียน ── */
+.writerSwitch { margin: 0 0 14px; padding: 10px; border-radius: 12px; border: 1.5px solid color-mix(in srgb, var(--setting-color) 45%, var(--line)); background: color-mix(in srgb, var(--setting-pick) 55%, var(--panel)); }
+.writerSwitchLabel { font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--setting-color); margin: 0 0 8px; }
+.writerCards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+main .writerCard {
+  --card: #2a7336; --card-ink: #fff;
+  position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center;
+  min-height: 62px; padding: 10px 28px 10px 12px; text-align: left; cursor: pointer;
+  border: 1.5px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink);
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .1s ease;
+}
+main .writerCard[data-value='gemini'] { --card: #3b5bdb; }
+main .writerCard:hover:not([aria-checked='true']) { border-color: var(--card); background: color-mix(in srgb, var(--card) 8%, var(--panel)); }
+main .writerCard:active { transform: scale(.98); }
+main .writerCard:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
+.writerIcon { grid-row: 1 / span 2; font-size: 22px; line-height: 1; width: 28px; text-align: center; }
+.writerName { font-size: 15px; font-weight: 800; line-height: 1.2; }
+.writerSub { font-size: 11.5px; line-height: 1.3; opacity: .75; }
+.writerTick { display: none; position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 900; line-height: 20px; text-align: center; background: #fff; color: var(--card); }
+main .writerCard[aria-checked='true'] { background: var(--card); border-color: var(--card); color: var(--card-ink); box-shadow: 0 2px 10px color-mix(in srgb, var(--card) 35%, transparent); }
+main .writerCard[aria-checked='true'] .writerSub { opacity: .9; }
+main .writerCard[aria-checked='true'] .writerTick { display: inline-block; }
+.writerStatus { margin: 8px 0 0; font-size: 12px; line-height: 1.5; }
+.writerStatus[data-tone='warn'] { color: #a4570a; font-weight: 600; }
+.writerKey { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px dashed #c98a2e; background: color-mix(in srgb, #f6c46b 14%, var(--panel)); }
+.writerKey label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.writerKey label a { font-weight: 500; margin-left: 6px; color: var(--accent); }
+.writerKey .pickRow input { flex: 1; min-width: 0; }
+@media (prefers-color-scheme: dark) { .writerStatus[data-tone='warn'] { color: #f0b260; } }
+@media (max-width: 340px) { .writerCards { grid-template-columns: 1fr; } }

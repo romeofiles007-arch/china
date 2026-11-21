@@ -475,7 +475,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
       // ผู้ใช้กรอก Gemini API key เองในแผงข้าง → เขียนลง .env (ไฟล์นี้ถูก gitignore)
       if (req.method === 'POST' && path === '/api/gemini-key') {
         const key = String((await readBody(req)).key ?? '').trim()
-        if (!/^[\w-]{20,}$/.test(key)) return json(res, 400, { error: 'รูปแบบ API key ไม่ถูกต้อง' }), true
+        // รับจุดด้วย — key บางรุ่นของ Google มีจุด เดิมรับแค่ตัวอักษร ตัวเลข - _ อาจปฏิเสธ key ที่ถูกต้อง
+        if (!/^[\w.-]{20,}$/.test(key)) return json(res, 400, { error: 'รูปแบบ API key ไม่ถูกต้อง — คัดลอกมาทั้งก้อนจาก aistudio.google.com/apikey' }), true
         const envFile = join(ROOT, '.env')
         const text = existsSync(envFile) ? readFileSync(envFile, 'utf8') : ''
         writeFileSync(envFile, /^GEMINI_API_KEY=.*$/m.test(text) ? text.replace(/^GEMINI_API_KEY=.*$/m, `GEMINI_API_KEY=${key}`) : `${text.replace(/\n?$/, '\n')}GEMINI_API_KEY=${key}\n`)
