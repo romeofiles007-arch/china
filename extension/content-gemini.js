@@ -138,16 +138,27 @@ async function startNewChat() {
 }
 
 /** สภาพหน้าตอนพัง — ผู้ดูแลมองไม่เห็นจอเครื่องผลิต ต้องรู้จากข้อความ error */
+/**
+ * ยังไม่ได้ลงชื่อเข้าใช้ — เครื่องผลิต 21 พ.ย. 2026: เปิด /app แล้วถูกพาไปหน้าแรก gemini.google.com/ (หน้าแนะนำ ไม่มีช่องพิมพ์)
+ * ข้อความ error ต้องมีคำว่า "ลงชื่อเข้าใช้" — autopilot ใช้คำนี้ตัดสินว่าไม่ต้องลองซ้ำ สลับไป ChatGPT ทันที
+ */
+const NOT_SIGNED_IN = 'Gemini ยังไม่ได้ลงชื่อเข้าใช้ — เปิด gemini.google.com ใน Chrome ที่รันโปรแกรมแล้วลงชื่อเข้าใช้บัญชี Google ก่อน'
+function signedOut() {
+  if (/accounts\.google\.com/.test(location.host) || document.querySelector('a[href*="ServiceLogin"]')) return true
+  if (!location.pathname.startsWith('/app') && !document.querySelector('rich-textarea')) return true
+  return [...document.querySelectorAll('a, button')].some((b) => /^(sign in|ลงชื่อเข้าใช้)$/i.test((b.textContent || '').trim()) && b.offsetParent)
+}
+
 function pageState() {
-  const signIn = [...document.querySelectorAll('a, button')].some((b) => /^(sign in|ลงชื่อเข้าใช้)$/i.test((b.textContent || '').trim()) && b.offsetParent)
   const editable = document.querySelectorAll('[contenteditable="true"]').length
-  const why = signIn ? 'ยังไม่ได้ลงชื่อเข้าใช้ Google ในแท็บ Gemini' : !editor() ? 'หาช่องพิมพ์ไม่เจอ' : 'แชตเก่ายังค้างอยู่บนหน้า'
+  const why = signedOut() ? NOT_SIGNED_IN : !editor() ? 'หาช่องพิมพ์ไม่เจอ' : 'แชตเก่ายังค้างอยู่บนหน้า'
   return `${why} [${location.host}${location.pathname} · คำตอบเดิม ${responses().length} · ช่องพิมพ์ rich-textarea ${document.querySelectorAll('rich-textarea').length} · contenteditable ${editable} · "${document.title.slice(0, 40)}"]`
 }
 
 async function runPrompt(prompt, { newChat = true } = {}) {
-  if (/accounts\.google\.com/.test(location.host) || document.querySelector('a[href*="ServiceLogin"]')) {
-    throw new Error('Gemini ยังไม่ได้ลงชื่อเข้าใช้ — เปิด gemini.google.com ใน Chrome ที่รันโปรแกรมแล้วลงชื่อเข้าใช้ก่อน')
+  // หน้าโหลดเสร็จแล้วยังไม่ล็อกอิน → บอกเลย ไม่ต้องรอหาช่องพิมพ์ 40 วิ
+  if (await waitFor(() => editor() || (document.readyState === 'complete' && signedOut() && document.querySelector('a, button')), { timeout: 20_000, label: 'หน้า Gemini' }).then(() => !editor() && signedOut(), () => signedOut())) {
+    throw new Error(NOT_SIGNED_IN)
   }
   if (newChat) await startNewChat()
   await fillPrompt(prompt)
