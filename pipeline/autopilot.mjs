@@ -34,6 +34,7 @@ import { clipSettings, clipTarget, clipScopeLabel, clipsDir, collectClips, scene
 import { kieKey, kieTier, kieBalance } from './lib/kie.mjs'
 import { clipSource, postPrompt, parsePost, savePost, readPost } from './lib/post.mjs'
 import { exportForAutoPost } from './lib/autopost.mjs'
+import { geminiChat, writerOf } from './lib/gemini_text.mjs'
 
 // ── อาร์กิวเมนต์ ──
 const raw = process.argv.slice(2)
@@ -83,14 +84,25 @@ if (autoTopic) {
   const seen = listSeenTitles()
   console.log('▶ แผนกคิดหัวข้อ')
   console.log(`   แนว: ${!config.script.genre || config.script.genre === 'mix' ? 'สุ่มหลากหลายแนว' : config.script.genre}${process.env.CLIP_MOOD === 'happy' ? ' · เพิ่มความสุข' : ''}`)
-  console.log('   ChatGPT กำลังเสนอหัวข้อและให้คะแนน…')
+  // ผู้เขียนบทเป็น Gemini → ให้ Gemini คิดหัวข้อด้วย · Gemini ล้มเมื่อไรใช้ ChatGPT แทนจนจบขั้นนี้
+  let topicGemini = writerOf(config) === 'gemini' ? geminiChat({ model: config.script.geminiModel }) : null
+  console.log(`   ${topicGemini ? 'Gemini' : 'ChatGPT'} กำลังเสนอหัวข้อและให้คะแนน…`)
   await requireBridge()
   let topics = []
   for (let attempt = 1; attempt <= 3 && !topics.length; attempt++) {
-    const result = await runJob({
+    // ส่งให้เลี่ยงเฉพาะ 100 เรื่องล่าสุด (เดิมส่งทุกเรื่องที่เคยทำ — prompt ยาวขึ้นทุกคลิป) + หัวข้อที่เพิ่งถูกตัดเพราะซ้ำ
+    const prompt = scoredTopicsPrompt(config, { avoid: [...recent.map((r) => r.title), ...rejected.map((r) => r.title)], seen })
+    let result = null
+    if (topicGemini) {
+      result = await topicGemini.ask(prompt).then((text) => ({ text }), (err) => {
+        console.warn(`   Gemini คิดหัวข้อไม่ได้ (${err.message}) — ใช้ ChatGPT แทน`)
+        topicGemini = null
+        return null
+      })
+    }
+    result ??= await runJob({
       agent: 'chatgpt', kind: 'prompt', label: 'คิดหัวข้อ + ให้คะแนน',
-      // ส่งให้เลี่ยงเฉพาะ 100 เรื่องล่าสุด (เดิมส่งทุกเรื่องที่เคยทำ — prompt ยาวขึ้นทุกคลิป) + หัวข้อที่เพิ่งถูกตัดเพราะซ้ำ
-      payload: { prompt: scoredTopicsPrompt(config, { avoid: [...recent.map((r) => r.title), ...rejected.map((r) => r.title)], seen }), newChat: true }, timeoutMs: 20 * 60_000,
+      payload: { prompt, newChat: true }, timeoutMs: 20 * 60_000,
     }).catch((err) => ({ error: err }))
     const doneSlugs = new Set(done.map(slugify))
     const offered = parseScoredTopics(result?.text ?? '').filter((t) => !doneSlugs.has(slugify(t.title)))
@@ -304,6 +316,30 @@ async function askChatGPT(prompt, label, { tries = 3, attachments, timeoutMs = 4
   throw lastError
 }
 
+/**
+ * ผู้เขียนบท/คิดหัวข้อ — ChatGPT (ค่าเริ่มต้น) หรือ Gemini ตามที่เลือกในแผงข้าง (script.writer)
+ * Gemini ล้ม (ไม่มี key โควตาหมดทุกรุ่น เน็ตล่ม) → เปลี่ยนไปใช้ ChatGPT จนจบคลิปนี้ ไม่ให้งานผลิตหยุด
+ * restart = prompt ฉบับเต็มสำหรับเริ่มแชตใหม่ — ใช้ตอนเปลี่ยนผู้เขียนกลางการสั่งปรับในแชตเดิม (ChatGPT ไม่เห็นแชตของ Gemini)
+ */
+const writer = (() => {
+  let gemini = writerOf(config) === 'gemini' ? geminiChat({ model: config.script.geminiModel }) : null
+  return {
+    get name() { return gemini ? 'Gemini' : 'ChatGPT' },
+    async ask(prompt, label, { newChat = true, restart, timeoutMs } = {}) {
+      if (gemini) {
+        try {
+          return await gemini.ask(prompt, { newChat })
+        } catch (err) {
+          console.warn(`   ${label}: Gemini ใช้ไม่ได้ (${err.message}) — เปลี่ยนไปใช้ ChatGPT สำหรับคลิปนี้`)
+          gemini = null
+          if (!newChat && restart) return askChatGPT(restart(), label, { timeoutMs })
+        }
+      }
+      return askChatGPT(prompt, label, { newChat, timeoutMs })
+    },
+  }
+})()
+
 /** บทที่ใช้ไม่ได้ → เปลี่ยนชื่อเก็บไว้ (ไม่ลบ) ให้รอบหน้าเขียนใหม่ */
 function setAsideScript(file) {
   if (existsSync(file)) renameSync(file, file.replace(/\.txt$/, `_offtarget_${Date.now()}.txt`))
@@ -326,10 +362,13 @@ async function scriptDepartment() {
   let feedback = ''
   let revise = null // บทรอบก่อนยาว/สั้นผิดเป้า → สั่งปรับในแชตเดิม (ไม่ส่ง Blueprint ทั้งก้อนซ้ำ)
   for (let attempt = 1; attempt <= 3; attempt++) {
-    dept('script', { status: 'working', attempts: attempt, expectSec: 150 + config.script.targetMinutes * 20, detail: revise ? `ChatGPT กำลังปรับความยาวบท (รอบ ${attempt})` : `ChatGPT กำลังเขียนบท (${config.script.targetMinutes} นาที)` })
-    const text = revise
-      ? await askChatGPT(revise, `ปรับความยาวบท "${title}"`, { newChat: false })
-      : await askChatGPT(scriptPrompt(config, title, profile) + feedback, `เขียนบท "${title}"`)
+    const who = writer.name
+    dept('script', { status: 'working', attempts: attempt, expectSec: 150 + config.script.targetMinutes * 20, detail: revise ? `${who} กำลังปรับความยาวบท (รอบ ${attempt})` : `${who} กำลังเขียนบท (${config.script.targetMinutes} นาที)` })
+    const text = await writer.ask(
+      revise ?? scriptPrompt(config, title, profile) + feedback,
+      revise ? `ปรับความยาวบท "${title}"` : `เขียนบท "${title}"`,
+      { newChat: !revise, restart: () => scriptPrompt(config, title, profile) + feedback },
+    )
     revise = null
     // จบด้วยสระหน้า (เ แ โ ใ ไ) = ขาดกลางคำแน่นอน (ไม่มีคำไทยจบแบบนี้) → ขอใหม่ ไม่งั้นเสียงท้ายคลิปขาด
     if (/[เแโใไ]\s*$/.test(text.trim()) && attempt < 3) {

@@ -23,6 +23,7 @@ import { listVoices, readVoice, writeVoice, voiceDir, voiceId, voiceReady, AUDIO
 import { EDGE_VOICES, GEMINI_VOICES, GEMINI_MODELS, ELEVEN_MODELS, edgePython, synthCloud, elevenVoiceInfo, isElevenVoiceId } from '../pipeline/lib/cloud_tts.mjs'
 import { voxcpmInstalled, voxcpmVoices, synthVoxcpm, voxcpmVoiceFromRaw, setVoxcpmRefText } from '../pipeline/lib/voxcpm.mjs'
 import { hasKey } from '../pipeline/lib/env.mjs'
+import { WRITERS, writerOf } from '../pipeline/lib/gemini_text.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from '../pipeline/lib/shotlist.mjs'
 import { execFileSync } from 'node:child_process'
 import { parseTimecodeFilename } from '../pipeline/lib/shotfile.mjs'
@@ -937,6 +938,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             if (['on', 'off'].includes(body.engage)) c.script.engage = body.engage === 'on'
             // แนวเนื้อหา: off ปกติ | random สุ่มต่อคลิป | happy เพิ่มความสุข ไม่เสนอความทุกข์ — ใช้กับคลิปใหม่
             if (MOODS[body.mood]) c.script.mood = body.mood
+            // ผู้เขียนบทและหัวข้อ: chatgpt (ค่าเริ่มต้น) | gemini — ใช้กับคลิปที่เริ่มหลังจากนี้
+            if (WRITERS[body.writer]) c.script.writer = body.writer
             // ม้าน้ำ/Kie: 'off' · เปอร์เซ็นต์ของฉากทั้งเรื่อง · 'first' = N ภาพแรก (จำนวนจาก firstCount)
             const aiCoverage = body.aiCoverage ?? body.aiClips // aiClips รองรับ extension รุ่นเก่า
             if (aiCoverage === 'off') c.clips = { ...(c.clips ?? {}), provider: 'off' }
@@ -978,6 +981,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           motion: MOTION_PRESETS[c.render.motion] ? c.render.motion : 'off',
           engage: c.script.engage === false ? 'off' : 'on',
           mood: MOODS[c.script.mood] ? c.script.mood : 'off',
+          writer: writerOf(c),
+          gemini: { hasKey: hasKey('GEMINI_API_KEY') },
           bgm: bgmMode(c),
           bgmCount: tracks.length,
           bgmLevel: bgmLevel(c),
@@ -996,6 +1001,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             motion: Object.entries(MOTION_PRESETS).map(([id, m]) => ({ id, label: m.label })),
             engage: [{ id: 'on', label: 'ชวนคุย' }, { id: 'off', label: 'ไม่ชวน' }],
             mood: Object.entries(MOODS).map(([id, m]) => ({ id, label: m.label })),
+            writer: Object.entries(WRITERS).map(([id, w]) => ({ id, label: w.label })),
             bgmLevel: Object.entries(BGM_LEVELS).map(([id, l]) => ({ id, label: l.label })),
             bgm: [
               { id: 'off', label: 'ไม่ใส่เพลง' },

@@ -1680,6 +1680,25 @@ function renderClipSettings() {
     random: 'สุ่มต่อคลิป ครึ่งหนึ่งเป็นแนวเพิ่มความสุข อีกครึ่งเป็นแนวปกติ',
     happy: 'หัวข้อและบทเน้นความสุข อิ่มใจ มีกำลังใจ ไม่เสนอความทุกข์ ปัญหา ความกลัว นรก หรือความตาย',
   }[clip.mood] ?? ''
+  // ผู้เขียนบท: ChatGPT · Gemini — โปรแกรมในเครื่องรุ่นเก่าไม่ส่งมา → ซ่อน
+  const writer = $('clipWriter')
+  const writerOptions = clip.options.writer ?? []
+  writer.parentElement.hidden = !writerOptions.length
+  if (!writer.childElementCount) {
+    for (const o of writerOptions) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: o.label })
+      b.dataset.value = o.id
+      writer.append(b)
+    }
+  }
+  for (const b of writer.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.writer))
+  const needKey = clip.writer === 'gemini' && !clip.gemini?.hasKey
+  $('writerKeyRow').hidden = !needKey
+  $('clipWriterHint').textContent = clip.writer === 'gemini'
+    ? needKey
+      ? 'ใส่ Gemini API key ก่อน — ยังไม่มี key ระบบจะใช้ ChatGPT เขียนแทน'
+      : 'Gemini คิดหัวข้อและเขียนบท (เลือกรุ่น pro ใหม่สุดเอง) · ถ้า Gemini ใช้ไม่ได้ ระบบใช้ ChatGPT แทนอัตโนมัติ · กำกับภาพและคำโพสต์ยังใช้ ChatGPT'
+    : 'ChatGPT คิดหัวข้อและเขียนบทผ่านแท็บเบราว์เซอร์'
   // ผู้ช่วยจัดฉาก/Kie — เลือกสัดส่วนของฉากทั้งเรื่อง
   const ai = $('clipAi')
   const aiOptions = clip.options.aiCoverage ?? clip.options.aiClips ?? []
@@ -1779,6 +1798,22 @@ $('clipPause').addEventListener('click', (e) => {
 $('clipMood').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ mood: b.dataset.value })
+})
+$('clipWriter').addEventListener('click', (e) => {
+  const b = e.target.closest('button')
+  if (b && !localBusy()) saveClipSettings({ writer: b.dataset.value })
+})
+$('saveWriterGeminiKey').addEventListener('click', async () => {
+  const key = $('writerGeminiKey').value.trim()
+  if (!key) return
+  try {
+    await api(await localApp(), '/api/gemini-key', { key })
+    $('writerGeminiKey').value = ''
+    if (V.gemini) V.gemini.hasKey = true
+    await saveClipSettings({})
+  } catch (err) {
+    $('clipWriterHint').textContent = err.message
+  }
 })
 $('clipEngage').addEventListener('click', (e) => {
   const b = e.target.closest('button')
