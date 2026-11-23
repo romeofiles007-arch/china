@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path'
 import { ROOT } from '../pipeline/lib/config.mjs'
 import { loadEnv } from '../pipeline/lib/env.mjs'
 import { createUi } from './ui.js'
-import { watchBridgeCode, extensionVersion } from './selfupdate.js'
+import { watchBridgeCode, extensionVersion, extensionManifestVersion } from './selfupdate.js'
 import { createUpdater } from './update.js'
 import { createPosting } from './posting.js'
 import { createKeepAwake } from './keepawake.js'
@@ -111,6 +111,7 @@ setInterval(() => {
   }
 }, 20_000).unref()
 const waiting = [] // ผู้รอ job ฝั่ง extension: {agent, respond, timer}
+let staleExtensionAt = 0 // เวลาที่ extension รุ่นค้างมาของานล่าสุด (ถูกปัดด้วย 409)
 const lastPoll = {} // agent → เวลาที่ extension มาถามหางานล่าสุด ใช้บอกหน้า UI ว่าต่ออยู่ไหม
 
 const LOG = join(ROOT, 'bridge', 'bridge.log')
@@ -223,7 +224,9 @@ const server = createServer(async (req, res) => {
   try {
     // extension เทียบลายนิ้วมือไฟล์ของตัวเอง — เปลี่ยนแล้ว reload ตัวเองเมื่อไม่มีงานค้าง
     if (req.method === 'GET' && path === '/ext-version') {
-      return json(res, 200, { version: extensionVersion(), busy: workInProgress() })
+      // extension รุ่นเก่าที่เพิ่งถูกปัดงาน (409) ต้อง reload ได้แม้มีคลิปกำลังทำ — ไม่งั้นคลิปรองานที่มันไม่ยอมรับ ส่วนมันก็รอคลิปจบ ค้างกันทั้งคู่
+      // (ตัว extension ยังเช็ก busy ของตัวเองก่อน reload งานที่ถืออยู่จึงไม่หลุด)
+      return json(res, 200, { version: extensionVersion(), busy: workInProgress() && Date.now() - staleExtensionAt > 90_000 })
     }
 
     // ── ฝั่ง pipeline ────────────────────────────────────────────
@@ -263,6 +266,19 @@ const server = createServer(async (req, res) => {
     // ── ฝั่ง extension ───────────────────────────────────────────
     if (req.method === 'GET' && path === '/job') {
       const agent = url.searchParams.get('agent')
+      // extension รุ่นค้าง (เช่นติดตั้งไว้ในอีกโปรไฟล์ Chrome ที่ยังไม่ reload) ห้ามรับงาน — เจอจริง 23 พ.ย. 2026 ที่ Cartoon Auto:
+      // รุ่นเก่าในอีกโปรไฟล์แย่งงาน Flow ไปทำด้วยบัญชี Google อื่น เปิด project ไม่ได้ ล้มทั้งคลิป
+      // ตัวใหม่ส่ง v มาด้วย → ตอบทันทีให้ reload ตัวเอง · ตัวเก่าไม่ส่ง v → ค้างสายไว้ 25 วิก่อนตอบ กันมันวนถามถี่
+      const want = extensionManifestVersion()
+      const have = url.searchParams.get('v') ?? ''
+      if (want && have !== want) {
+        const reply = () => json(res, 409, { reload: true, version: want, error: `extension รุ่น ${have || 'เก่า'} ไม่ตรงกับไฟล์ (${want}) — reload extension ก่อนรับงาน` })
+        staleExtensionAt = Date.now()
+        if (have) return reply()
+        const timer = setTimeout(reply, 25_000)
+        req.on('close', () => clearTimeout(timer))
+        return
+      }
       lastPoll[agent] = Date.now()
       for (const j of jobs.values()) if (j.agent === agent && j.status === 'queued' && isOrphan(j)) dropOrphan(j)
       const pending = halt.on() ? null : [...jobs.values()].find((j) => j.agent === agent && canDispatchJob(j, jobs.values()))
