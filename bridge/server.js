@@ -21,7 +21,7 @@ import { watchBridgeCode, extensionVersion, extensionManifestVersion } from './s
 import { createUpdater } from './update.js'
 import { createPosting } from './posting.js'
 import { createKeepAwake } from './keepawake.js'
-import { canRetryJob, canDispatchJob } from './job-policy.js'
+import { canRetryJob, canDispatchJob, stillBusyWith } from './job-policy.js'
 import { createHalt, HALTED_MESSAGE } from './halt.js'
 
 // ⏹ หยุดทุกอย่าง — สวิตช์เก็บลงไฟล์ รอดการรีสตาร์ท (bridge/halt.js)
@@ -91,6 +91,15 @@ setInterval(() => {
     }
     if (job.status !== 'running') continue
     if (Date.now() - (job.touchedAt ?? job.createdAt) < (STALE_MS[job.agent] ?? 5 * 60_000)) continue
+    // แท็บเงียบ แต่ extension ยังติดงานนี้อยู่ → รอต่อ ส่งซ้ำไปก็ไม่มีใครรับ และห้ามนับว่าล้มเหลว (pipeline จะสั่งชุดเดิมใหม่ = ภาพซ้ำ)
+    // ค้างจริงตลอดไป pipeline มีเส้นตายของตัวเอง (runJob timeoutMs) แล้วยกเลิกงานเอง
+    if (stillBusyWith(job, lastPoll)) {
+      if (!job.busyNotedAt) {
+        job.busyNotedAt = Date.now()
+        log(`งาน ${job.kind} (${job.id.slice(0, 8)}) แท็บ ${job.agent} เงียบ แต่ extension ยังติดงานนี้อยู่ → รอต่อ ไม่ส่งซ้ำ`)
+      }
+      continue
+    }
     if (!canRetryJob(job)) {
       Object.assign(job, { status: 'error', cancelled: true, error: 'TikTok ขาดการติดต่อ — ตรวจในบัญชีก่อนลองใหม่ เพื่อไม่ให้โพสต์ซ้ำ' })
       saveJobs()
@@ -184,6 +193,7 @@ function dispatch(job) {
   clearTimeout(w.timer)
   job.status = 'running'
   job.touchedAt = Date.now()
+  job.dispatchedAt = Date.now() // ใช้ดูว่า extension ยังติดงานนี้อยู่ไหม (stillBusyWith)
   saveJobs()
   json(w.respond, 200, { id: job.id, kind: job.kind, payload: job.payload })
   log(`ส่งงาน ${job.kind} (${job.id.slice(0, 8)}) ให้ ${job.agent}`)
@@ -285,6 +295,7 @@ const server = createServer(async (req, res) => {
       if (pending) {
         pending.status = 'running'
         pending.touchedAt = Date.now()
+        pending.dispatchedAt = Date.now() // หลัง lastPoll[agent] — งานนี้ถือว่ายังไม่ได้ "กลับมาถามหางาน"
         saveJobs()
         log(`ส่งงาน ${pending.kind} (${pending.id.slice(0, 8)}) ให้ ${agent}`)
         return json(res, 200, { id: pending.id, kind: pending.kind, payload: pending.payload })
