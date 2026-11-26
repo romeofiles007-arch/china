@@ -16,10 +16,27 @@ job:
 ใช้:  tts/.venv-voxcpm/Scripts/python.exe tts/voxcpm/synth_voxcpm.py job.json
 """
 import json
+import math
 import os
+import re
 import sys
 import time
 from pathlib import Path
+
+# จำนวนเสียงที่ต้องพูดของข้อความ — ไม่นับช่องว่าง/เครื่องหมาย · ตัวเลขนับ 3 (อ่านออกเสียงยาวกว่าตัวอักษร เช่น "3" = "สาม")
+_SILENT = re.compile(r"[\s.…,!?\"'“”‘’()\[\]\-–—:;]")
+
+
+def spoken_units(text):
+    text = _SILENT.sub("", text)
+    return len(text) + 2 * sum(ch.isdigit() for ch in text)
+
+
+# ยาวเกินคาดกี่เท่าถึงถือว่า "พูดไม่หยุด" (เสียงมั่วต่อท้าย) แล้วสร้างใหม่ — เผื่อจังหวะช้า/เว้นที่ "..." ไว้แล้ว
+OVERRUN_RATIO = 1.6
+OVERRUN_SLACK_S = 0.5
+# เพดานความยาวที่ให้โมเดลสร้างได้ (เท่าของความยาวที่คาด) — ตัดเสียงมั่วเร็วขึ้น ไม่เปลืองเวลา (การ์ดช้าอย่าง 1080 Ti ต่างกันมาก)
+MAX_LEN_RATIO = 2.2
 
 # ไลบรารีพิมพ์ข้อความ/progress ลง stdout — แยก stdout จริงไว้ส่งสถานะ JSON ให้ Node อย่างเดียว
 _STATUS = sys.stdout
@@ -51,6 +68,17 @@ def main():
     torch.manual_seed(int(job.get("seed", 42)))
     model = VoxCPM.from_pretrained(job.get("model", "openbmb/VoxCPM2"), load_denoiser=False)
     sr = model.tts_model.sample_rate
+    # 1 step ของโมเดล = เสียงกี่วินาที (VoxCPM2 ≈ 0.16 วิ) — ใช้แปลงความยาวที่คาดเป็นเพดาน max_len
+    tm = model.tts_model
+    try:
+        step_seconds = tm.patch_size * tm.chunk_size / tm._encode_sample_rate
+    except (AttributeError, TypeError, ZeroDivisionError):
+        step_seconds = 0.16
+    # ความเร็วพูดของเสียงต้นแบบ (หน่วยเสียง/วินาที) → คาดความยาวของแต่ละประโยค
+    ref_seconds = sf.info(job["ref_wav"]).duration
+    units_per_second = spoken_units(job.get("ref_text", "")) / ref_seconds if ref_seconds > 0 else 0
+    if units_per_second <= 0:
+        units_per_second = 11.0  # ค่ากลางของเสียงเล่าเรื่องไทย
     # อุ่นเครื่องด้วยเสียงอ้างอิงชุดเดียวกันก่อนประโยคจริง — ประโยคแรกหลังโหลดโมเดลมักเพี้ยน/มีเสียงแปลกปลอมนำหน้า
     try:
         model.generate(
@@ -88,24 +116,34 @@ def main():
         try:
             # โมเดลตัดพยางค์สุดท้ายแบบสุ่ม (~1 ใน 3 ประโยค เช่น "เฉยๆ" เหลือ "เฉย") → ตรวจแล้วสร้างใหม่
             # สร้างใหม่ด้วยข้อความเดิม (ผลสุ่มต่างกันทุกรอบ) — ห้ามเติม "." ท้ายประโยค โมเดลอ่านจุดออกเสียงเป็นคำแปลก ("นัด")
-            # ได้ไม่ครบทุกรอบ → เก็บรอบที่หางเงียบยาวที่สุด
-            best, best_tail = None, -1.0
-            for attempt, text in enumerate([seg["text"]] * 3):
+            # อีกแบบที่เจอ: โมเดลไม่หยุดตอนพูดจบ พูดคำมั่วต่อท้ายจนยาว 2–3 เท่า (~1 ใน 3 ประโยค ทดสอบ 27 พ.ย. 2026)
+            # → จำกัดความยาวที่สร้างได้ และสร้างใหม่ถ้ายาวเกินที่คาดจากความเร็วพูดของเสียงต้นแบบ
+            # ได้ไม่ครบทุกรอบ → เก็บรอบที่ความยาวพอดีก่อน แล้วค่อยดูหางเงียบ
+            expected = max(0.8, spoken_units(seg["text"]) / units_per_second)
+            limit = expected * OVERRUN_RATIO + OVERRUN_SLACK_S
+            max_len = int(math.ceil(expected * MAX_LEN_RATIO / step_seconds)) + 10
+            best, best_key = None, None
+            for attempt in range(4):
                 wav = model.generate(
-                    text=text,
+                    text=seg["text"],
                     prompt_wav_path=job["ref_wav"],
                     prompt_text=job["ref_text"],
                     reference_wav_path=job["ref_wav"],
                     cfg_value=float(job.get("cfg_value", 2.0)),
                     inference_timesteps=int(job.get("inference_timesteps", 10)),
-                    retry_badcase=True,
+                    max_len=max_len,
+                    # ตรวจความยาวเองด้านบน (เกณฑ์ของ voxcpm หลวมถึง 6 เท่าต่อ token จับเคสนี้ไม่ได้)
+                    retry_badcase=False,
                 )
                 if wav is None or len(wav) == 0:
                     continue
                 tail = tail_seconds(wav)
-                if tail > best_tail:
-                    best, best_tail = wav, tail
-                if tail >= 0.08:
+                seconds = len(wav) / sr
+                fits, ends = seconds <= limit, tail >= 0.08
+                key = (fits, ends, -abs(seconds - expected))
+                if best_key is None or key > best_key:
+                    best, best_key = wav, key
+                if fits and ends:
                     break
             if best is None:
                 raise RuntimeError("ไม่มีเสียงออกมา")
