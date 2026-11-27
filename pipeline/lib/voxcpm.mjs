@@ -102,10 +102,22 @@ export function voxcpmSettings(voice, options = {}) {
   return { ...options, ...picked }
 }
 
-export async function synthVoxcpm(segments, options, onEvent = () => {}) {
+/**
+ * ค่าทั้งหมดที่ใช้พากย์เสียงนี้ (ค่ารวม + ค่าเฉพาะเสียง) + คลิปอ้างอิง — ส่งไปพากย์ที่เครื่องอื่นได้โดยไม่ต้องมีเสียงนั้นในเครื่อง
+ */
+export async function voxcpmJobSettings(options) {
   const { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear', maxPause = 0.35 } = voxcpmSettings(options.voice, options)
-  if (!voxcpmInstalled()) throw new Error('ยังไม่ได้ติดตั้ง VoxCPM2 — รัน scripts/setup-voxcpm.ps1')
   const ref = await voxcpmReference(voice, emotion)
+  return { ref, settings: { speed, cfg, steps, eq, maxPause } }
+}
+
+/**
+ * options.ref = { wav, text } → ใช้คลิปอ้างอิงนี้ตรงๆ ไม่อ่าน tts/voices (เครื่องพากย์ที่รับงานจากเครื่องอื่น)
+ */
+export async function synthVoxcpm(segments, options, onEvent = () => {}) {
+  const { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear', maxPause = 0.35 } = options.ref ? options : voxcpmSettings(options.voice, options)
+  if (!voxcpmInstalled()) throw new Error('ยังไม่ได้ติดตั้ง VoxCPM2 — รัน scripts/setup-voxcpm.ps1')
+  const ref = options.ref ?? (await voxcpmReference(voice, emotion))
   mkdirSync(dirname(segments[0].out), { recursive: true })
   // "..." ในบท = ช่วงหยุด แต่ VoxCPM2 อ่านเป็นเสียงแปลก (ทดสอบแล้ว: "ห้อง... แล้ว" → "ห่องถือก", "ชัด... แต่" → "ชัด เนี่ย")
   // → แยกท่อนตรง "..." อ่านทีละท่อน แล้วต่อกันด้วยความเงียบจริง
