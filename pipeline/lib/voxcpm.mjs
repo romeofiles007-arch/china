@@ -88,7 +88,22 @@ export const VOICE_EQ = {
   bright: { label: 'สว่างชัดมาก', filter: 'highpass=f=90,lowshelf=f=200:g=-5,equalizer=f=1200:t=o:w=1:g=2.5,equalizer=f=2800:t=o:w=1.2:g=6,highshelf=f=6000:g=3' },
 }
 
-export async function synthVoxcpm(segments, { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear' }, onEvent = () => {}) {
+/**
+ * ค่าที่เสียงกำหนดเองใน voice.json → "voxcpmSettings": { speed, eq, cfg, steps } ชนะค่ารวมของ config
+ * ใช้กับเสียงที่คลิปต้นแบบมีจังหวะ/โทนสำเร็จแล้ว เช่น khathawuth_eleven (ต้นแบบเป็นเสียง ElevenLabs ที่พูดช้า 0.85 อยู่แล้ว
+ * ถ้าโดนชะลอซ้ำตามจังหวะเล่าเรื่องจะช้าเกิน และ EQ "สว่าง" ทำให้โทนเพี้ยนจากต้นแบบ)
+ */
+export function voxcpmSettings(voice, options = {}) {
+  const own = readVoice(voice)?.voxcpmSettings
+  const picked = {}
+  if (own && typeof own === 'object') {
+    for (const key of ['speed', 'eq', 'cfg', 'steps']) if (own[key] !== undefined && own[key] !== null) picked[key] = own[key]
+  }
+  return { ...options, ...picked }
+}
+
+export async function synthVoxcpm(segments, options, onEvent = () => {}) {
+  const { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear' } = voxcpmSettings(options.voice, options)
   if (!voxcpmInstalled()) throw new Error('ยังไม่ได้ติดตั้ง VoxCPM2 — รัน scripts/setup-voxcpm.ps1')
   const ref = await voxcpmReference(voice, emotion)
   mkdirSync(dirname(segments[0].out), { recursive: true })

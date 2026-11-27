@@ -17,7 +17,7 @@ import { probeDuration, concatAudio, trimSilence, eachLimit, run } from './lib/f
 import { hhmmss } from './lib/timecode.mjs'
 import { selectedVoice } from './lib/voices.mjs'
 import { synthCloud, edgeVoiceFits, defaultEdgeVoice, elevenModelFits } from './lib/cloud_tts.mjs'
-import { synthVoxcpm } from './lib/voxcpm.mjs'
+import { synthVoxcpm, voxcpmSettings } from './lib/voxcpm.mjs'
 import { clearAsrTimeline } from './lib/asr.mjs'
 import { readProfile } from './lib/clip_profile.mjs'
 import { PACE, paceOf } from '../extension/prompts.js'
@@ -169,7 +169,8 @@ TTS ล้มเหลว: ${err.message}`)
 
 if (vox) {
   const shared = config.tts.myVoice ?? {}
-  console.log(`เสียง VoxCPM2 · ${vox.voice} · อารมณ์ ${shared.emotion ?? 'calm'} · ความเร็ว ${shared.speed ?? 1}`)
+  const used = voxcpmSettings(vox.voice, { speed: shared.speed ?? 1, eq: vox.eq, cfg: vox.cfg, steps: vox.steps })
+  console.log(`เสียง VoxCPM2 · ${vox.voice} · อารมณ์ ${shared.emotion ?? 'calm'} · ความเร็ว ${used.speed} · โทน ${used.eq ?? 'clear'} · cfg ${used.cfg ?? 2} · steps ${used.steps ?? 10}`)
   try {
     await synthVoxcpm(
       segments.map((s) => ({ index: s.index, text: s.text, out: join(partsDir, `${String(s.index).padStart(4, '0')}.wav`) })),
