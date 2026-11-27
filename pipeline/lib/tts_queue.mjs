@@ -98,7 +98,9 @@ const listJobs = (root) =>
  */
 export function heartbeat(worker, { gpu = null, busy = null } = {}, root = QUEUE_DIR) {
   mkdirSync(root, { recursive: true })
-  writeJson(join(root, 'worker.json'), { name: worker, gpu, busy, seen: now() })
+  // heartbeat ระหว่างพากย์ไม่ได้ส่งชื่อการ์ดมา — ใช้ชื่อเดิมของเครื่องนี้
+  const before = readJson(join(root, 'worker.json'))
+  writeJson(join(root, 'worker.json'), { name: worker, gpu: gpu ?? (before?.name === worker ? before.gpu : null), busy, seen: now() })
 }
 
 export function claimNext(worker, { gpu = null } = {}, root = QUEUE_DIR) {
@@ -155,7 +157,7 @@ const ago = (ms) => (ms < 90_000 ? `${Math.round(ms / 1000)} วิที่แ�
 export function describeWait(state, worker) {
   // ชื่อเครื่องที่รับงานนี้จริง (worker.json = เครื่องที่มาเช็กคิวล่าสุด อาจเป็นอีกเครื่อง)
   const who = (state.state === 'working' && state.worker) || worker.name || 'เครื่องพากย์'
-  if (state.state === 'working') return state.total ? `${who} กำลังพากย์ ${state.done ?? 0}/${state.total}` : `${who} รับงานแล้ว กำลังโหลดโมเดล`
+  if (state.state === 'working') return state.done ? `${who} กำลังพากย์ ${state.done}/${state.total}` : `${who} รับงานแล้ว กำลังโหลดโมเดล${state.total ? ` (${state.total} ประโยค)` : ''}`
   if (worker.online) return `อยู่ในคิว — ${who} จะรับงานภายในไม่กี่วินาที`
   return worker.seen
     ? `รอเครื่องพากย์ (${who}) เปิด — ออนไลน์ล่าสุด ${ago(now() - worker.seen)} · เปิดเครื่องแล้วจะพากย์ต่อให้เอง`

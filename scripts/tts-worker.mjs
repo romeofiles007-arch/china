@@ -2,7 +2,8 @@
 /**
  * เครื่องพากย์ (การ์ดจอแรง เช่น 4070) — ดึงงานพากย์ VoxCPM2 จากคิวของเครื่องผลิต (24hrs) ผ่าน SSH แล้วส่งเสียงกลับ
  *
- *   node scripts/tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--node "C:/Program Files/nodejs/node.exe"] [--once]
+ *   node scripts/tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--node "C:/Program Files/nodejs/node.exe"] [--python <venv>/Scripts/python.exe] [--once]
+ *   --python = ใช้ VoxCPM2 ที่ลงไว้ในโปรเจกต์อื่นของเครื่องนี้ (ไม่ใส่ = tts/.venv-voxcpm ของโปรเจกต์นี้)
  *
  * เปิดเองตอน login: node scripts/install-tts-worker.mjs  (ถอน: --uninstall)
  * ต้องมี: tts/.venv-voxcpm (scripts/setup-voxcpm.ps1) + `ssh <host>` เข้าได้โดยไม่ถามรหัส (ใช้ key)
@@ -13,7 +14,6 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { ROOT } from '../pipeline/lib/config.mjs'
-import { synthVoxcpm, voxcpmInstalled } from '../pipeline/lib/voxcpm.mjs'
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`)
@@ -23,6 +23,9 @@ const HOST = arg('host', '24hrs')
 const REMOTE_ROOT = arg('root', 'C:/Git/china').replace(/\\/g, '/')
 const REMOTE_NODE = arg('node', 'C:/Program Files/nodejs/node.exe').replace(/\\/g, '/')
 const ONCE = process.argv.includes('--once')
+if (arg('python')) process.env.VOXCPM_PYTHON = arg('python')
+// import หลังตั้ง VOXCPM_PYTHON — โมดูลอ่านค่าตอนโหลด
+const { synthVoxcpm, voxcpmInstalled, VOXCPM_PYTHON } = await import('../pipeline/lib/voxcpm.mjs')
 const NAME = hostname().replace(/[^\w-]/g, '') || 'tts-worker'
 const POLL_MS = 20_000
 const OFFLINE_RETRY_MS = 30_000
@@ -133,7 +136,7 @@ async function runJob({ job, refWav }) {
 
 async function main() {
   if (!voxcpmInstalled()) {
-    log('ยังไม่ได้ติดตั้ง VoxCPM2 ในเครื่องนี้ — รัน scripts/setup-voxcpm.ps1 ก่อน')
+    log(`ไม่พบ VoxCPM2 (${VOXCPM_PYTHON}) — รัน scripts/setup-voxcpm.ps1 หรือใส่ --python ของที่ลงไว้แล้ว`)
     process.exit(2)
   }
   if (!takeLock()) {

@@ -3,7 +3,7 @@
  * ให้เครื่องพากย์ (scripts/tts-worker.mjs) เปิดเองทุกครั้งที่ login — ไม่มีหน้าต่างค้าง
  * วางไฟล์ .vbs ในโฟลเดอร์ Startup ของผู้ใช้ (ไม่ต้องใช้สิทธิ์ admin) แล้วเปิด worker ทันที
  *
- *   node scripts/install-tts-worker.mjs [--host 24hrs] [--root C:/Git/china]   ติดตั้ง + เปิดเลย
+ *   node scripts/install-tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--python <venv>/Scripts/python.exe]   ติดตั้ง + เปิดเลย
  *   node scripts/install-tts-worker.mjs --uninstall                             เอาออก (worker ตัวที่เปิดอยู่ต้องปิดเอง)
  *
  * log: projects/_tts_worker/worker.log
@@ -27,7 +27,7 @@ if (!existsSync(startup)) {
 }
 
 const pass = []
-for (const name of ['host', 'root', 'node']) {
+for (const name of ['host', 'root', 'node', 'python']) {
   const i = process.argv.indexOf(`--${name}`)
   if (i > 0 && process.argv[i + 1]) pass.push(`--${name}`, process.argv[i + 1])
 }
@@ -36,6 +36,8 @@ const q = (s) => `""${s}""` // quote ภายในสตริงของ VBS
 const cmd = [q(process.execPath), q(worker), ...pass.map(q)].join(' ')
 writeFileSync(
   file,
+  // UTF-16 + BOM — WScript อ่านไฟล์ ANSI ตาม codepage ของเครื่อง path ภาษาไทย (เช่น E:\พุทธ) จะเพี้ยนแล้วเปิดไม่ขึ้น
+  '\uFEFF' +
   [
     "' เครื่องพากย์ VoxCPM2 ของ China — ดึงงานพากย์จากเครื่องผลิตผ่าน SSH (สร้างโดย scripts/install-tts-worker.mjs)",
     'Set sh = CreateObject("WScript.Shell")',
@@ -43,6 +45,7 @@ writeFileSync(
     `sh.Run "${cmd}", 0, False`,
     '',
   ].join('\r\n'),
+  'utf16le',
 )
 console.log(`ติดตั้งแล้ว: ${file}`)
 

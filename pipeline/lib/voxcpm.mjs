@@ -14,7 +14,8 @@ import { run, trimSilence } from './ffmpeg.mjs'
 import { voiceDir, readVoice, writeVoice, VOICES_DIR, AUDIO_EXT } from './voices.mjs'
 import { ttsPython } from './config.mjs'
 
-export const VOXCPM_PYTHON = join(ROOT, 'tts', '.venv-voxcpm', 'Scripts', 'python.exe')
+// VOXCPM_PYTHON = ใช้ VoxCPM2 ที่ติดตั้งไว้ในโปรเจกต์อื่นของเครื่องเดียวกัน (ไม่ต้องลง torch ซ้ำอีก ~3 GB) — เครื่องพากย์ใช้ผ่าน --python
+export const VOXCPM_PYTHON = process.env.VOXCPM_PYTHON || join(ROOT, 'tts', '.venv-voxcpm', 'Scripts', 'python.exe')
 export const voxcpmInstalled = () => existsSync(VOXCPM_PYTHON)
 
 const selectionsFile = (id) => {

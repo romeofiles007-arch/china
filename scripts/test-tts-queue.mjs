@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { enqueueJob, claimNext, writeProgress, finishJob, failJob, jobState, workerStatus, waitForJob, describeWait, CLIENT_STALE_MS, CLAIM_STALE_MS } from '../pipeline/lib/tts_queue.mjs'
+import { heartbeat, enqueueJob, claimNext, writeProgress, finishJob, failJob, jobState, workerStatus, waitForJob, describeWait, CLIENT_STALE_MS, CLAIM_STALE_MS } from '../pipeline/lib/tts_queue.mjs'
 
 let passed = 0
 const test = async (name, fn) => {
@@ -105,6 +105,13 @@ await test('รหัสงาน/ชื่อไฟล์แปลกๆ (path 
   assert.throws(() => jobState('../x', root), /รหัสงานไม่ถูกต้อง/)
   const id = enqueueJob({ refWav: ref, refText: 't', segments: segsIn(base) }, root)
   assert.throws(() => finishJob(id, { '../evil.wav': Buffer.alloc(1) }, {}, root), /ชื่อไฟล์ไม่ถูกต้อง/)
+})
+
+await test('heartbeat ระหว่างพากย์ไม่ลบชื่อการ์ดจอ', async () => {
+  const root = fresh('i')
+  claimNext('PC4070', { gpu: 'RTX 4070' }, root)
+  heartbeat('PC4070', { busy: 'x' }, root)
+  assert.equal(workerStatus(root).gpu, 'RTX 4070')
 })
 
 rmSync(base, { recursive: true, force: true })
