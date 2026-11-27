@@ -89,7 +89,7 @@ export const VOICE_EQ = {
 }
 
 /**
- * ค่าที่เสียงกำหนดเองใน voice.json → "voxcpmSettings": { speed, eq, cfg, steps } ชนะค่ารวมของ config
+ * ค่าที่เสียงกำหนดเองใน voice.json → "voxcpmSettings": { speed, eq, cfg, steps, maxPause } ชนะค่ารวมของ config
  * ใช้กับเสียงที่คลิปต้นแบบมีจังหวะ/โทนสำเร็จแล้ว เช่น khathawuth_eleven (ต้นแบบเป็นเสียง ElevenLabs ที่พูดช้า 0.85 อยู่แล้ว
  * ถ้าโดนชะลอซ้ำตามจังหวะเล่าเรื่องจะช้าเกิน และ EQ "สว่าง" ทำให้โทนเพี้ยนจากต้นแบบ)
  */
@@ -97,13 +97,13 @@ export function voxcpmSettings(voice, options = {}) {
   const own = readVoice(voice)?.voxcpmSettings
   const picked = {}
   if (own && typeof own === 'object') {
-    for (const key of ['speed', 'eq', 'cfg', 'steps']) if (own[key] !== undefined && own[key] !== null) picked[key] = own[key]
+    for (const key of ['speed', 'eq', 'cfg', 'steps', 'maxPause']) if (own[key] !== undefined && own[key] !== null) picked[key] = own[key]
   }
   return { ...options, ...picked }
 }
 
 export async function synthVoxcpm(segments, options, onEvent = () => {}) {
-  const { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear' } = voxcpmSettings(options.voice, options)
+  const { voice, emotion = 'calm', speed = 1, cfg = 2.0, steps = 10, eq = 'clear', maxPause = 0.35 } = voxcpmSettings(options.voice, options)
   if (!voxcpmInstalled()) throw new Error('ยังไม่ได้ติดตั้ง VoxCPM2 — รัน scripts/setup-voxcpm.ps1')
   const ref = await voxcpmReference(voice, emotion)
   mkdirSync(dirname(segments[0].out), { recursive: true })
@@ -117,7 +117,7 @@ export async function synthVoxcpm(segments, options, onEvent = () => {}) {
     for (const p of s.pieces) pieces.push({ index: pieces.length, text: p.text, out: p.out })
   }
   const jobFile = join(dirname(segments[0].out), '.voxcpm_job.json')
-  writeFileSync(jobFile, JSON.stringify({ model: 'openbmb/VoxCPM2', ref_wav: ref.wav, ref_text: ref.text, cfg_value: cfg, inference_timesteps: steps, segments: pieces }, null, 2))
+  writeFileSync(jobFile, JSON.stringify({ model: 'openbmb/VoxCPM2', ref_wav: ref.wav, ref_text: ref.text, cfg_value: cfg, inference_timesteps: steps, max_pause: maxPause, segments: pieces }, null, 2))
   // progress ต่อประโยคของบท ไม่ใช่ต่อท่อนย่อย
   const pieceToSeg = pieces.map((p) => segments.findIndex((s) => s.pieces.some((x) => x.out === p.out)))
   const userOnEvent = onEvent

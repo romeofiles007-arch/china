@@ -38,6 +38,46 @@ OVERRUN_SLACK_S = 0.5
 # เพดานความยาวที่ให้โมเดลสร้างได้ (เท่าของความยาวที่คาด) — ตัดเสียงมั่วเร็วขึ้น ไม่เปลืองเวลา (การ์ดช้าอย่าง 1080 Ti ต่างกันมาก)
 MAX_LEN_RATIO = 2.2
 
+
+def cap_pauses(wav, sr, max_pause=0.35, keep=0.3, threshold_db=-40.0, hop_s=0.02):
+    """ช่วงเงียบกลางประโยคที่ยาวเกิน max_pause วิ → เหลือ keep วิ (หัว/ท้ายไฟล์ไม่แตะ — 2_tts ตัดเอง)
+
+    VoxCPM2 ชอบหยุดกลางประโยคเอง 0.6–1.7 วิ แม้ไม่มีเครื่องหมาย ("เทียนจี้กำลังจะ ... แพ้พนัน") ฟังเป็น "มาๆ หยุดๆ"
+    ElevenLabs หยุดกลางประโยคไม่เกิน ~0.55 วิ (ส่วนใหญ่ 0.3–0.4 ตรงช่องว่าง) — วัด 27 พ.ย. 2026 บทเดียวกัน 18 ประโยค
+    ช่วงหยุดตรง "..." ในบท voxcpm.mjs ต่อให้ทีหลัง (0.28 วิ) ไม่โดนตัดตรงนี้
+    """
+    import numpy as np
+
+    wav = np.asarray(wav, dtype=np.float32)
+    if not max_pause or len(wav) == 0:
+        return wav
+    hop = max(1, int(sr * hop_s))
+    n = len(wav) // hop
+    if n < 3:
+        return wav
+    rms = np.sqrt(np.mean(wav[: n * hop].reshape(n, hop) ** 2, axis=1)) + 1e-9
+    peak = float(np.max(np.abs(wav))) + 1e-9
+    silent = 20 * np.log10(rms / peak) < threshold_db
+    loud = np.flatnonzero(~silent)
+    if len(loud) < 2:
+        return wav
+    keep_n = int(keep * sr)
+    pieces, pos, i, last = [], 0, int(loud[0]), int(loud[-1])
+    while i <= last:
+        if not silent[i]:
+            i += 1
+            continue
+        j = i
+        while j <= last and silent[j]:
+            j += 1
+        if (j - i) * hop > max_pause * sr:
+            # เก็บความเงียบครึ่งหนึ่งไว้ฝั่งละข้าง ตัดตรงกลาง (ตรงกลางเงียบสนิท ไม่มีเสียงคลิก)
+            pieces.append(wav[pos: i * hop + keep_n // 2])
+            pos = j * hop - (keep_n - keep_n // 2)
+        i = j
+    pieces.append(wav[pos:])
+    return np.concatenate(pieces)
+
 # ไลบรารีพิมพ์ข้อความ/progress ลง stdout — แยก stdout จริงไว้ส่งสถานะ JSON ให้ Node อย่างเดียว
 _STATUS = sys.stdout
 sys.stdout = open(os.devnull, "w", encoding="utf-8")
@@ -137,6 +177,8 @@ def main():
                 )
                 if wav is None or len(wav) == 0:
                     continue
+                # หยุดกลางประโยคนานเกิน → ย่อก่อนวัดความยาว (ไม่งั้นรอบที่แค่หยุดนานจะถูกนับว่า "ยาวเกิน" แล้วสร้างใหม่เปล่าๆ)
+                wav = cap_pauses(wav, sr, job.get("max_pause", 0.35))
                 tail = tail_seconds(wav)
                 seconds = len(wav) / sr
                 fits, ends = seconds <= limit, tail >= 0.08
