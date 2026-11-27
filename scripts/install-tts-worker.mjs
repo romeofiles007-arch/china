@@ -29,7 +29,7 @@ if (!existsSync(startup)) {
 // ส่งต่อทุกตัวเลือก (--root ใส่ซ้ำได้ หลายโปรแกรม)
 const pass = []
 process.argv.forEach((a, i) => {
-  if (['--host', '--root', '--node', '--python'].includes(a) && process.argv[i + 1]) pass.push(a, process.argv[i + 1])
+  if (['--host', '--root', '--node', '--python', '--asr-python'].includes(a) && process.argv[i + 1]) pass.push(a, process.argv[i + 1])
 })
 const worker = join(ROOT, 'scripts', 'tts-worker.mjs')
 const q = (s) => `""${s}""` // quote ภายในสตริงของ VBScript

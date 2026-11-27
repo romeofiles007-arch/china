@@ -5,6 +5,7 @@
  *   node scripts/tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--node "C:/Program Files/nodejs/node.exe"] [--python <venv>/Scripts/python.exe] [--once]
  *   --root ใส่ซ้ำได้ (หรือคั่นด้วย ,) — รับงานจากหลายโปรแกรมบนเครื่องผลิตเดียวกัน เช่น china + buddha-Content + phi1baht
  *          ทุกโปรแกรมต้องมี scripts/tts-queue.mjs · เครื่องพากย์ใช้โค้ดพากย์ของโปรแกรมนี้ (china) กับทุกงาน
+ *   --asr-python = Python ที่มี faster-whisper ไว้ตรวจคำเกินท้ายประโยค (เช่น <โปรเจกต์>/tts/.venv/Scripts/python.exe)
  *   --python = ใช้ VoxCPM2 ที่ลงไว้ในโปรเจกต์อื่นของเครื่องนี้ (ไม่ใส่ = tts/.venv-voxcpm ของโปรเจกต์นี้)
  *
  * เปิดเองตอน login: node scripts/install-tts-worker.mjs  (ถอน: --uninstall)
@@ -30,6 +31,8 @@ const tagOf = (root) => basename(root)
 const REMOTE_NODE = arg('node', 'C:/Program Files/nodejs/node.exe').replace(/\\/g, '/')
 const ONCE = process.argv.includes('--once')
 if (arg('python')) process.env.VOXCPM_PYTHON = arg('python')
+// Python ที่มี faster-whisper — ตรวจแล้วตัดคำเกินท้ายประโยค (พูดคำสุดท้ายซ้ำ/คำมั่ว) · ไม่ใส่ = ใช้ tts/.venv ถ้ามี
+if (arg('asr-python')) process.env.VOXCPM_ASR_PYTHON = arg('asr-python')
 // import หลังตั้ง VOXCPM_PYTHON — โมดูลอ่านค่าตอนโหลด
 const { synthVoxcpm, voxcpmInstalled, VOXCPM_PYTHON } = await import('../pipeline/lib/voxcpm.mjs')
 const NAME = hostname().replace(/[^\w-]/g, '') || 'tts-worker'
@@ -117,6 +120,8 @@ async function runJob(root, { job, refWav }) {
     await synthVoxcpm(segments, { ref, emotion: 'calm', ...job.settings }, (msg) => {
       if (msg.event === 'segment') report(msg.index + 1)
       if (msg.event === 'error') log(`  ประโยคพัง: ${msg.message}`)
+      if (msg.event === 'fixed') log(`  ตัดคำเกินท้าย ประโยค ${msg.index + 1} (${msg.seconds} วิ): "${msg.full}" → "${msg.head}"`)
+      if (msg.event === 'fix-skipped') log(`  ${msg.message}`)
     })
     await reports
     const files = Object.fromEntries(readdirSync(join(dir, 'out')).filter((f) => /^\d{4}\.wav$/.test(f)).map((f) => [f, readFileSync(join(dir, 'out', f)).toString('base64')]))
