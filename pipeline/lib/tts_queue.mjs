@@ -69,7 +69,7 @@ export function removeJob(id, root = QUEUE_DIR) {
 export function workerStatus(root = QUEUE_DIR) {
   const w = readJson(join(root, 'worker.json'))
   if (!w?.seen) return { online: false, name: null, seen: null }
-  return { online: now() - w.seen < WORKER_ONLINE_MS, name: w.name ?? null, seen: w.seen, gpu: w.gpu ?? null }
+  return { online: now() - w.seen < WORKER_ONLINE_MS, name: w.name ?? null, seen: w.seen, gpu: w.gpu ?? null, busy: w.busy ?? null }
 }
 
 /** สถานะงาน: waiting (ในคิว) · working (กำลังพากย์ n/m) · done · failed · missing */
@@ -158,6 +158,7 @@ export function describeWait(state, worker) {
   // ชื่อเครื่องที่รับงานนี้จริง (worker.json = เครื่องที่มาเช็กคิวล่าสุด อาจเป็นอีกเครื่อง)
   const who = (state.state === 'working' && state.worker) || worker.name || 'เครื่องพากย์'
   if (state.state === 'working') return state.done ? `${who} กำลังพากย์ ${state.done}/${state.total}` : `${who} รับงานแล้ว กำลังโหลดโมเดล${state.total ? ` (${state.total} ประโยค)` : ''}`
+  if (worker.online && worker.busy) return `อยู่ในคิว — ${who} กำลังพากย์งานอื่นอยู่ เสร็จแล้วจะรับงานนี้ต่อ`
   if (worker.online) return `อยู่ในคิว — ${who} จะรับงานภายในไม่กี่วินาที`
   return worker.seen
     ? `รอเครื่องพากย์ (${who}) เปิด — ออนไลน์ล่าสุด ${ago(now() - worker.seen)} · เปิดเครื่องแล้วจะพากย์ต่อให้เอง`

@@ -3,6 +3,8 @@
  * เครื่องพากย์ (การ์ดจอแรง เช่น 4070) — ดึงงานพากย์ VoxCPM2 จากคิวของเครื่องผลิต (24hrs) ผ่าน SSH แล้วส่งเสียงกลับ
  *
  *   node scripts/tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--node "C:/Program Files/nodejs/node.exe"] [--python <venv>/Scripts/python.exe] [--once]
+ *   --root ใส่ซ้ำได้ (หรือคั่นด้วย ,) — รับงานจากหลายโปรแกรมบนเครื่องผลิตเดียวกัน เช่น china + buddha-Content + phi1baht
+ *          ทุกโปรแกรมต้องมี scripts/tts-queue.mjs · เครื่องพากย์ใช้โค้ดพากย์ของโปรแกรมนี้ (china) กับทุกงาน
  *   --python = ใช้ VoxCPM2 ที่ลงไว้ในโปรเจกต์อื่นของเครื่องนี้ (ไม่ใส่ = tts/.venv-voxcpm ของโปรเจกต์นี้)
  *
  * เปิดเองตอน login: node scripts/install-tts-worker.mjs  (ถอน: --uninstall)
@@ -12,7 +14,7 @@
 import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, appendFileSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { ROOT } from '../pipeline/lib/config.mjs'
 
 const arg = (name, fallback) => {
@@ -20,7 +22,11 @@ const arg = (name, fallback) => {
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback
 }
 const HOST = arg('host', '24hrs')
-const REMOTE_ROOT = arg('root', 'C:/Git/china').replace(/\\/g, '/')
+const REMOTE_ROOTS = (() => {
+  const roots = process.argv.flatMap((a, i) => (process.argv[i - 1] === '--root' ? a.split(',') : [])).map((r) => r.trim().replace(/\\/g, '/')).filter(Boolean)
+  return roots.length ? [...new Set(roots)] : ['C:/Git/china']
+})()
+const tagOf = (root) => basename(root)
 const REMOTE_NODE = arg('node', 'C:/Program Files/nodejs/node.exe').replace(/\\/g, '/')
 const ONCE = process.argv.includes('--once')
 if (arg('python')) process.env.VOXCPM_PYTHON = arg('python')
@@ -65,9 +71,9 @@ function gpuName() {
 }
 
 /** เรียก scripts/tts-queue.mjs บนเครื่องผลิตผ่าน SSH → JSON */
-function remote(args, input = null) {
+function remote(root, args, input = null) {
   const safe = args.map((a) => String(a).replace(/[^\w .:-]/g, ''))
-  const cmd = [`"${REMOTE_NODE}"`, `${REMOTE_ROOT}/scripts/tts-queue.mjs`, ...safe.map((a) => `"${a}"`)].join(' ')
+  const cmd = [`"${REMOTE_NODE}"`, `"${root}/scripts/tts-queue.mjs"`, ...safe.map((a) => `"${a}"`)].join(' ')
   return new Promise((resolve, reject) => {
     const proc = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4', HOST, cmd], { windowsHide: true })
     const chunks = []
@@ -90,19 +96,22 @@ function remote(args, input = null) {
   })
 }
 
-async function runJob({ job, refWav }) {
+async function runJob(root, { job, refWav }) {
+  const tag = tagOf(root)
   const dir = join(WORK_DIR, job.id)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(join(dir, 'out'), { recursive: true })
   const ref = { wav: join(dir, 'ref.wav'), text: job.refText }
   writeFileSync(ref.wav, Buffer.from(refWav, 'base64'))
   const segments = job.segments.map((s) => ({ index: s.index, text: s.text, out: join(dir, 'out', `${String(s.index).padStart(4, '0')}.wav`) }))
-  log(`รับงาน ${job.id}${job.label ? ` (${job.label})` : ''} · ${segments.length} ประโยค`)
+  log(`[${tag}] รับงาน ${job.id}${job.label ? ` (${job.label})` : ''} · ${segments.length} ประโยค`)
   const started = Date.now()
   // แจ้งเครื่องผลิตเป็นระยะ — ไม่งั้นแผงข้างจะเห็นว่าเครื่องพากย์ปิด ระหว่างที่โหลดโมเดล/พากย์ประโยคยาว
-  const beat = setInterval(() => remote(['heartbeat', NAME, job.id]).catch(() => {}), POLL_MS)
+  // ทุกโปรแกรม — คิวของโปรแกรมอื่นจะเห็นว่า "กำลังพากย์งานอื่นอยู่" ไม่ใช่ "ปิดอยู่"
+  const busy = `${tag}-${job.id}`
+  const beat = setInterval(() => REMOTE_ROOTS.forEach((r) => remote(r, ['heartbeat', NAME, busy]).catch(() => {})), POLL_MS)
   let reports = Promise.resolve()
-  const report = (done) => (reports = reports.then(() => remote(['progress', job.id, done, segments.length]).catch(() => {})))
+  const report = (done) => (reports = reports.then(() => remote(root, ['progress', job.id, done, segments.length]).catch(() => {})))
   try {
     report(0)
     await synthVoxcpm(segments, { ref, emotion: 'calm', ...job.settings }, (msg) => {
@@ -116,7 +125,7 @@ async function runJob({ job, refWav }) {
     // ส่งกลับไม่สำเร็จ (เครื่องผลิตรีสตาร์ท/เน็ตหลุด) → ลองซ้ำ ไม่ต้องพากย์ใหม่
     for (let attempt = 1; ; attempt++) {
       try {
-        await remote(['finish', job.id, NAME], JSON.stringify({ files, seconds }))
+        await remote(root, ['finish', job.id, NAME], JSON.stringify({ files, seconds }))
         break
       } catch (err) {
         if (/ไม่มีงาน/.test(err.message) || attempt >= 20) throw err
@@ -124,10 +133,10 @@ async function runJob({ job, refWav }) {
         await sleep(OFFLINE_RETRY_MS)
       }
     }
-    log(`ส่งเสียงกลับแล้ว ${job.id} · ${segments.length} ประโยคใน ${seconds} วิ`)
+    log(`[${tag}] ส่งเสียงกลับแล้ว ${job.id} · ${segments.length} ประโยคใน ${seconds} วิ`)
   } catch (err) {
-    log(`งาน ${job.id} ไม่สำเร็จ: ${err.message}`)
-    await remote(['fail', job.id, NAME], err.message).catch(() => {})
+    log(`[${tag}] งาน ${job.id} ไม่สำเร็จ: ${err.message}`)
+    await remote(root, ['fail', job.id, NAME], err.message).catch(() => {})
   } finally {
     clearInterval(beat)
     rmSync(dir, { recursive: true, force: true })
@@ -144,24 +153,30 @@ async function main() {
     process.exit(0)
   }
   const gpu = gpuName()
-  log(`เครื่องพากย์ ${NAME}${gpu ? ` (${gpu})` : ''} เริ่มทำงาน · เช็กคิวที่ ${HOST}:${REMOTE_ROOT} ทุก ${POLL_MS / 1000} วิ`)
-  let offline = false
+  log(`เครื่องพากย์ ${NAME}${gpu ? ` (${gpu})` : ''} เริ่มทำงาน · เช็กคิวที่ ${HOST}: ${REMOTE_ROOTS.join(', ')} ทุก ${POLL_MS / 1000} วิ`)
+  // แต่ละโปรแกรมเชื่อมได้/ไม่ได้แยกกัน — โปรแกรมหนึ่งยังไม่อัปเดต (ไม่มี tts-queue.mjs) ไม่ทำให้โปรแกรมอื่นหยุด
+  const offline = new Map()
   for (;;) {
-    let got
-    try {
-      got = await remote(['poll', NAME, gpu])
-      if (offline) log(`เชื่อม ${HOST} ได้แล้ว`)
-      offline = false
-    } catch (err) {
-      if (!offline) log(`เชื่อม ${HOST} ไม่ได้ (${err.message}) — รอแล้วลองใหม่`)
-      offline = true
-      if (ONCE) process.exit(1)
-      await sleep(OFFLINE_RETRY_MS)
-      continue
+    let worked = false
+    for (const root of REMOTE_ROOTS) {
+      let got
+      try {
+        got = await remote(root, ['poll', NAME, gpu])
+        if (offline.get(root)) log(`[${tagOf(root)}] เชื่อมได้แล้ว`)
+        offline.set(root, false)
+      } catch (err) {
+        if (!offline.get(root)) log(`[${tagOf(root)}] เชื่อม ${HOST}:${root} ไม่ได้ (${err.message}) — รอแล้วลองใหม่`)
+        offline.set(root, true)
+        continue
+      }
+      if (got.job) {
+        await runJob(root, got)
+        worked = true
+      }
     }
-    if (got.job) await runJob(got)
-    if (ONCE) break
-    if (!got.job) await sleep(POLL_MS)
+    if (ONCE) process.exit(REMOTE_ROOTS.every((r) => offline.get(r)) ? 1 : 0)
+    // เพิ่งทำงานเสร็จ → เช็กคิวต่อทันที (อาจมีงานรออยู่อีก) · ทุกโปรแกรมเชื่อมไม่ได้ → รอนานขึ้น
+    if (!worked) await sleep(REMOTE_ROOTS.every((r) => offline.get(r)) ? OFFLINE_RETRY_MS : POLL_MS)
   }
 }
 

@@ -3,7 +3,7 @@
  * ให้เครื่องพากย์ (scripts/tts-worker.mjs) เปิดเองทุกครั้งที่ login — ไม่มีหน้าต่างค้าง
  * วางไฟล์ .vbs ในโฟลเดอร์ Startup ของผู้ใช้ (ไม่ต้องใช้สิทธิ์ admin) แล้วเปิด worker ทันที
  *
- *   node scripts/install-tts-worker.mjs [--host 24hrs] [--root C:/Git/china] [--python <venv>/Scripts/python.exe]   ติดตั้ง + เปิดเลย
+ *   node scripts/install-tts-worker.mjs [--host 24hrs] [--root C:/Git/china --root C:/Git/phi1baht ...] [--python <venv>/Scripts/python.exe]   ติดตั้ง + เปิดเลย
  *   node scripts/install-tts-worker.mjs --uninstall                             เอาออก (worker ตัวที่เปิดอยู่ต้องปิดเอง)
  *
  * log: projects/_tts_worker/worker.log
@@ -26,11 +26,11 @@ if (!existsSync(startup)) {
   process.exit(1)
 }
 
+// ส่งต่อทุกตัวเลือก (--root ใส่ซ้ำได้ หลายโปรแกรม)
 const pass = []
-for (const name of ['host', 'root', 'node', 'python']) {
-  const i = process.argv.indexOf(`--${name}`)
-  if (i > 0 && process.argv[i + 1]) pass.push(`--${name}`, process.argv[i + 1])
-}
+process.argv.forEach((a, i) => {
+  if (['--host', '--root', '--node', '--python'].includes(a) && process.argv[i + 1]) pass.push(a, process.argv[i + 1])
+})
 const worker = join(ROOT, 'scripts', 'tts-worker.mjs')
 const q = (s) => `""${s}""` // quote ภายในสตริงของ VBScript
 const cmd = [q(process.execPath), q(worker), ...pass.map(q)].join(' ')

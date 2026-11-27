@@ -112,6 +112,10 @@ await test('heartbeat ระหว่างพากย์ไม่ลบชื�
   claimNext('PC4070', { gpu: 'RTX 4070' }, root)
   heartbeat('PC4070', { busy: 'x' }, root)
   assert.equal(workerStatus(root).gpu, 'RTX 4070')
+  const id = enqueueJob({ refWav: ref, refText: 't', segments: segsIn(base) }, root)
+  assert.match(describeWait(jobState(id, root), workerStatus(root)), /กำลังพากย์งานอื่นอยู่/, 'พากย์งานของโปรแกรมอื่นอยู่ ไม่ใช่ปิด')
+  claimNext('PC4070', {}, root)
+  assert.equal(workerStatus(root).busy, null, 'เช็กคิวใหม่ = ว่างแล้ว')
 })
 
 rmSync(base, { recursive: true, force: true })
