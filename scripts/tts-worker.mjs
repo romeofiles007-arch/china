@@ -127,14 +127,15 @@ async function runJob(root, { job, refWav }) {
     const files = Object.fromEntries(readdirSync(join(dir, 'out')).filter((f) => /^\d{4}\.wav$/.test(f)).map((f) => [f, readFileSync(join(dir, 'out', f)).toString('base64')]))
     if (Object.keys(files).length < segments.length) throw new Error(`ได้เสียง ${Object.keys(files).length}/${segments.length} ประโยค`)
     const seconds = Math.round((Date.now() - started) / 1000)
-    // ส่งกลับไม่สำเร็จ (เครื่องผลิตรีสตาร์ท/เน็ตหลุด) → ลองซ้ำ ไม่ต้องพากย์ใหม่
+    // ส่งกลับไม่สำเร็จ (เครื่องผลิตรีสตาร์ท/เน็ตหลุด) → เก็บเสียงไว้แล้วลองส่งซ้ำจนกว่าจะได้ ไม่ทิ้ง ไม่ต้องพากย์ใหม่
+    // เลิกได้กรณีเดียว: เครื่องผลิตไม่มีงานนี้แล้ว (ผู้ใช้หยุดคลิป)
     for (let attempt = 1; ; attempt++) {
       try {
         await remote(root, ['finish', job.id, NAME], JSON.stringify({ files, seconds }))
         break
       } catch (err) {
-        if (/ไม่มีงาน/.test(err.message) || attempt >= 20) throw err
-        log(`  ส่งเสียงกลับไม่สำเร็จ (${err.message}) — ลองใหม่ใน 30 วิ`)
+        if (/ไม่มีงาน/.test(err.message)) throw err
+        if (attempt === 1 || attempt % 20 === 0) log(`  ส่งเสียงกลับไม่สำเร็จ (${err.message}) — ลองใหม่ทุก 30 วิ จนกว่าจะส่งได้ (ครั้งที่ ${attempt})`)
         await sleep(OFFLINE_RETRY_MS)
       }
     }
