@@ -777,12 +777,21 @@ export function lengthTarget(language, targetMinutes, wordsPerMinute = 150, pace
 ประมาณ ${Math.max(6, Math.round(chars / perLine))} บรรทัด บรรทัดละ ~${perLine} ตัวอักษร — เสียงพากย์อ่าน${pace === 'calm' ? 'ช้าและเว้นจังหวะ ~8 ตัวอักษรต่อวินาที' : 'ได้ ~13 ตัวอักษรต่อวินาที'} เขียนเกินคลิปจะยาวเกินเวลา`
 }
 
-/** บทยาว/สั้นผิดเป้า → สั่งปรับต่อในแชตเดิม (สั้น เร็ว ไม่ต้องส่ง Blueprint ทั้งก้อนซ้ำ) */
-export function reviseLengthPrompt(language, { minutes, target, wordsPerMinute = 150, chars, pace = 'normal' }) {
+/**
+ * บทยาว/สั้นผิดเป้า → สั่งปรับความยาว (ไม่ต้องส่ง Blueprint ทั้งก้อนซ้ำ)
+ * draft = บทรอบก่อน → แนบบทไปท้าย prompt ส่งในแชตใหม่ได้ ไม่ต้องพึ่งแชตเดิม
+ * (ธรรมะ Auto 27–28 พ.ย. 2026: ส่งต่อในแชตเดิมค้างเกือบทุกคลิป — ไม่เจอปุ่มส่ง / คำตอบไม่ขึ้น · ระบบอื่นเปลี่ยนแชตบนแท็บไปแล้ว)
+ */
+export function reviseLengthPrompt(language, { minutes, target, wordsPerMinute = 150, chars, pace = 'normal', draft = '' }) {
   const shorter = minutes > target
   const words = target * wordsPerMinute * paceFactor(pace)
   const goal = language === 'th' ? `${Math.round(words * THAI_CHARS_PER_WORD)} ตัวอักษรไทย` : language === 'zh' ? `${Math.round(words * HAN_CHARS_PER_WORD)} 字` : `${Math.round(words)} words`
   const now = language !== 'en' && chars ? ` (${chars} ตัวอักษร)` : ''
+  const ask = reviseAsk({ minutes, target, shorter, goal, now })
+  return draft.trim() ? `ด้านล่างคือบทพากย์ (narration) ของคลิปตำนาน\n${ask}\n\n=== บทเดิม ===\n${draft.trim()}\n=== จบบทเดิม ===` : ask
+}
+
+function reviseAsk({ minutes, target, shorter, goal, now }) {
   return `บทนี้ยาวประมาณ ${minutes.toFixed(1)} นาที${now} แต่เป้าคือ ${target} นาที — ${shorter ? 'ตัดให้สั้นลง' : 'เพิ่มเนื้อหาให้ยาวขึ้น'} เหลือประมาณ ${goal}
 ${shorter ? 'เก็บประโยคเปิด ปมของเรื่อง ฉากเด็ด จุดพลิก และประโยคปิดไว้ ตัดบรรทัดบรรยากาศ ส่วนที่ซ้ำ หรือส่วนที่ไม่ดันเรื่องไปข้างหน้าออก' : 'เพิ่มอุปสรรคอีกขั้น ฉากเด็ดหรือรายละเอียดจริงของเรื่อง และบทสนทนาสั้นๆ ของตัวละคร — ห้ามยืดด้วยบรรยากาศ คำสอน หรือการโยงชีวิตคนยุคนี้ ห้ามแต่งข้อเท็จจริงหรือคำพูดของบุคคลจริงเพิ่ม'}
 ตอบเป็น narration ฉบับใหม่ทั้งหมดอย่างเดียว รูปแบบเดิม (1 บรรทัด = 1 ช่วงลมหายใจ) ไม่มีคำนำหรือคำปิดท้าย

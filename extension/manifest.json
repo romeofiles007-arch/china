@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ตำนานจีน Auto Bridge",
-  "version": "1.0.76",
+  "version": "1.0.77",
   "description": "ขับ ChatGPT และ Google Flow พร้อม Kie API ในเครื่องเพื่อทำคลิปการ์ตูนเล่าเรื่องจีนโบราณอัตโนมัติ",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAphTcgBF+oYA7lW1WaVfXHvlkPHG25H+/3uwwOu0UhPDAK+ngqF2fho8UIYCPRqF/CvL+ssAQytxYhpg4hbaPc2yBSZn25fnCE7E8poXDzg7uE7VoHF6zxAKWbfiddY+4bnBZ9QxoEFdegSD5k+Hj3ZqmsjSe15Aevcg/D0PvQ8oAEoEkjFuWrDOsxEgzh2tE7u+9T1qE3p9gGcCqBeMXpeLyWT2B1JrKU2ThgcgK7sa+CnND1RfOwE75q6hn6QHbqHyNUcnHykPWr/ouSel0weJyWxQy/O5REU03mZAuIXI4xag/TF0Aj3lXf/FiyDqSMrVJXR55nxDvBUEp5LBZywIDAQAB",
   "permissions": [
